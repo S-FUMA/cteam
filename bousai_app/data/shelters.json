@@ -5,7 +5,11 @@
     "address": "住所",
     "latitude": 34.69730231414616,
     "longitude": 135.4855326957491,
-    "opening_status": "開設中"
+    "opening_status": "開設中",
+    "elderly_friendly": true,
+    "pets_allowed": true,
+    "wheelchair_toilet": true,
+    "barrier_free": true
   },
   {
     "id": 2,
@@ -13,6 +17,22 @@
     "address": "〒530-0003 大阪府大阪市北区堂島3丁目1-21 NTTDATA堂島ビル",
     "latitude": 34.695515432448246,
     "longitude": 135.49097452209054,
-    "opening_status": "開設中"
+    "opening_status": "開設中",
+    "elderly_friendly": true,
+    "pets_allowed": true,
+    "wheelchair_toilet": true,
+    "barrier_free": true
+  },
+  {
+    "id": 3,
+    "name": "大阪市立玉川小学校",
+    "address": "〒530-0003 大阪府大阪市北区堂島3丁目1-21 NTTDATA堂島ビル",
+    "latitude": 34.69227982217602,
+    "longitude": 135.48114909325398,
+    "opening_status": "開設中",
+    "elderly_friendly": true,
+    "pets_allowed": true,
+    "wheelchair_toilet": true,
+    "barrier_free": true
   }
 ]

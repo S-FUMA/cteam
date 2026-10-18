@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, session, redirect, url_for
+from flask import Flask, abort, jsonify, request, render_template, session, redirect, url_for
 from urllib.parse import urlparse, urljoin
 from functools import wraps
 import json
@@ -246,7 +246,297 @@ def format_report_time(iso_str):
 
 def filter_shelters(district=None):
     """district 指定があれば一致する避難所のみ、なければ全件を返す"""
-    return [s for s in shelters if not district or s.get('district') == district]
+    return [
+        shelter for shelter in shelters
+        if isinstance(shelter, dict)
+        and (not district or shelter.get('district') == district)
+    ]
+
+
+ALL_DISTRICTS = '__all__'
+UNREGISTERED_DISTRICT = '__unregistered__'
+DISTRICT_VALUE_PREFIX = 'district:'
+HAZARD_OPTIONS = ('地震', '津波', '洪水', '土砂災害', '高潮', '暴風', '大雪')
+CONDITION_OPTIONS = ('ペット可', 'バリアフリー', '車いす対応トイレ', '備蓄', '駐車場')
+CONDITION_ALIASES = {
+    'ペット可': ('ペット可', 'ペット受け入れ', 'ペット受け入れ可'),
+    'バリアフリー': ('バリアフリー', 'barrier_free', 'barrierfree'),
+    '車いす対応トイレ': (
+        '車いす対応トイレ', '車椅子対応トイレ', 'wheelchair_toilet',
+        'wheelchair_accessible_toilet',
+    ),
+    '備蓄': ('備蓄', '備蓄品', 'emergency_supplies', 'supplies'),
+    '駐車場': ('駐車場', 'parking', 'parking_lot'),
+}
+CONDITION_DIRECT_KEYS = {
+    'ペット可': ('pets_allowed', 'pet_allowed', 'pet_acceptance'),
+    'バリアフリー': ('barrier_free', 'barrierfree'),
+    '車いす対応トイレ': ('wheelchair_toilet', 'wheelchair_accessible_toilet'),
+    '備蓄': ('emergency_supplies', 'supplies', 'stockpiles'),
+    '駐車場': ('parking', 'parking_available', 'parking_lot'),
+}
+
+
+def get_shelter_districts():
+    return sorted({
+        shelter['district'].strip()
+        for shelter in shelters
+        if isinstance(shelter, dict)
+        and isinstance(shelter.get('district'), str)
+        and shelter['district'].strip()
+    }, key=str.casefold)
+
+
+def normalize_choice(value, options):
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().casefold()
+    return next((option for option in options if option.casefold() == normalized), None)
+
+
+def validate_hazard_conditions(hazard, conditions):
+    normalized_hazard = normalize_choice(hazard, HAZARD_OPTIONS) if hazard else ''
+    if hazard and normalized_hazard is None:
+        abort(400, description='不正な災害種別です。')
+
+    normalized_conditions = []
+    for condition in conditions:
+        normalized = normalize_choice(condition, CONDITION_OPTIONS)
+        if normalized is None:
+            abort(400, description='不正な設備条件です。')
+        if normalized not in normalized_conditions:
+            normalized_conditions.append(normalized)
+    return normalized_hazard, normalized_conditions
+
+
+def get_shelter_hazards(shelter):
+    raw_hazards = shelter.get('hazards')
+    if not isinstance(raw_hazards, list):
+        return None if 'hazards' not in shelter else []
+    return sorted({
+        normalized
+        for value in raw_hazards
+        if (normalized := normalize_choice(value, HAZARD_OPTIONS)) is not None
+    }, key=HAZARD_OPTIONS.index)
+
+
+def get_shelter_conditions(shelter):
+    registered = False
+    matched_conditions = set()
+    raw_conditions = shelter.get('conditions')
+    if isinstance(raw_conditions, list):
+        registered = True
+        for value in raw_conditions:
+            if not isinstance(value, str):
+                continue
+            normalized_value = value.strip().casefold()
+            for condition, aliases in CONDITION_ALIASES.items():
+                if normalized_value in {alias.casefold() for alias in aliases}:
+                    matched_conditions.add(condition)
+
+    raw_facilities = shelter.get('facilities')
+    if isinstance(raw_facilities, (list, dict)):
+        registered = True
+        for condition, aliases in CONDITION_ALIASES.items():
+            direct_value = normalize_facility_value(
+                {'facilities': raw_facilities},
+                CONDITION_DIRECT_KEYS[condition],
+                aliases,
+            )
+            if direct_value:
+                matched_conditions.add(condition)
+
+    for condition, keys in CONDITION_DIRECT_KEYS.items():
+        for key in keys:
+            if key in shelter:
+                registered = True
+                if normalize_facility_value(shelter, (key,), ()) is True:
+                    matched_conditions.add(condition)
+                break
+
+    return sorted(matched_conditions, key=CONDITION_OPTIONS.index) if registered else None
+
+
+def normalize_shelter_status(shelter):
+    value = shelter.get('opening_status', shelter.get('status'))
+    if value is True or value in ('開設中', '開設', 'open', 'Open'):
+        return 'open', '開設中'
+    if value is False or value in ('未開設', '未開設中', 'not_open', '未開設'):
+        return 'not_open', '未開設'
+    if value in ('閉鎖中', '閉鎖', 'closed', 'Closed'):
+        return 'closed', '閉鎖中'
+    return 'unknown', '状況未登録'
+
+
+def optional_nonnegative_integer(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, str) and value.isdecimal():
+        return int(value)
+    return None
+
+
+def normalize_facility_value(shelter, keys, labels):
+    for key in keys:
+        if key in shelter:
+            value = shelter[key]
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                normalized = value.strip().casefold()
+                if normalized in ('yes', 'true', 'あり', '有', '可', '対応'):
+                    return True
+                if normalized in ('no', 'false', 'なし', '無', '不可', '非対応'):
+                    return False
+            return None
+
+    if 'facilities' not in shelter:
+        return None
+    facilities = shelter['facilities']
+    if isinstance(facilities, dict):
+        for key in (*keys, *labels):
+            if key in facilities:
+                return normalize_facility_value(
+                    {key: facilities[key]}, (key,), (key,)
+                )
+        return False
+    if isinstance(facilities, list):
+        normalized_facilities = {
+            item.strip().casefold() for item in facilities if isinstance(item, str)
+        }
+        return any(label.casefold() in normalized_facilities for label in labels)
+    return None
+
+
+def prepare_shelter_for_results(shelter):
+    prepared = dict(shelter)
+    status_key, status_label = normalize_shelter_status(shelter)
+    capacity = optional_nonnegative_integer(shelter.get('capacity'))
+    evacuees = optional_nonnegative_integer(
+        shelter.get('evacuees', shelter.get('current_evacuees'))
+    )
+
+    if status_key in ('closed', 'not_open'):
+        acceptance = '受け入れなし'
+    elif capacity is None or evacuees is None:
+        acceptance = '人数未登録'
+    elif status_key == 'unknown':
+        acceptance = '状況未登録'
+    elif evacuees < capacity:
+        acceptance = f'空きあり（あと {capacity - evacuees} 人）'
+    else:
+        acceptance = '満員'
+
+    facility_definitions = (
+        ('高齢者向け設備', ('elderly_friendly', 'elderly_facilities', 'elderly_support'), ('高齢者向け', '高齢者向け設備', '高齢者')),
+        ('ペット受け入れ', ('pets_allowed', 'pet_allowed', 'pet_acceptance'), ('ペット可', 'ペット受け入れ')),
+        ('車椅子対応トイレ', ('wheelchair_toilet', 'wheelchair_accessible_toilet'), ('車椅子対応トイレ',)),
+        ('バリアフリー', ('barrier_free', 'barrierfree'), ('バリアフリー',)),
+    )
+    known_facilities = {
+        value.casefold()
+        for _, keys, labels in facility_definitions
+        for value in (*keys, *labels)
+    }
+    raw_facilities = shelter.get('facilities')
+    if isinstance(raw_facilities, list):
+        other_facilities = [
+            item for item in raw_facilities
+            if not isinstance(item, str) or item.casefold() not in known_facilities
+        ]
+    elif isinstance(raw_facilities, dict):
+        other_facilities = [
+            f'{key}: {value}'
+            for key, value in raw_facilities.items()
+            if not isinstance(key, str) or key.casefold() not in known_facilities
+        ]
+    else:
+        other_facilities = []
+
+    prepared.update({
+        'district_display': shelter.get('district') or '未登録',
+        'name_en_display': shelter.get('name_en') or '',
+        'address_en_display': shelter.get('address_en') or '',
+        'status_display': status_label,
+        'status_class': status_key,
+        'capacity_display': capacity,
+        'evacuees_display': evacuees,
+        'acceptance_display': acceptance,
+        'hazards_display': get_shelter_hazards(shelter),
+        'conditions_display': get_shelter_conditions(shelter),
+        'facility_displays': [
+            (label, normalize_facility_value(shelter, keys, aliases))
+            for label, keys, aliases in facility_definitions
+        ],
+        'other_facilities': other_facilities,
+    })
+    return prepared
+
+
+def search_shelters(
+    district_filter=ALL_DISTRICTS,
+    keyword='',
+    shelter_name='',
+    hazard='',
+    conditions=(),
+):
+    keyword = keyword.strip()
+    query = keyword.casefold()
+    shelter_name = shelter_name.strip().casefold()
+    normalized_hazard = normalize_choice(hazard, HAZARD_OPTIONS) if hazard else None
+    normalized_conditions = {
+        normalize_choice(condition, CONDITION_OPTIONS)
+        for condition in conditions
+    }
+    results = []
+    for shelter in shelters:
+        if not isinstance(shelter, dict):
+            continue
+        district = shelter.get('district')
+        has_district = isinstance(district, str) and bool(district.strip())
+        if district_filter == UNREGISTERED_DISTRICT and has_district:
+            continue
+        if district_filter.startswith(DISTRICT_VALUE_PREFIX):
+            selected_district = district_filter[len(DISTRICT_VALUE_PREFIX):]
+            if not isinstance(district, str) or district.strip() != selected_district:
+                continue
+        if district_filter not in (ALL_DISTRICTS, UNREGISTERED_DISTRICT) and not district_filter.startswith(DISTRICT_VALUE_PREFIX):
+            continue
+
+        searchable_values = (
+            shelter.get('name', ''),
+            shelter.get('name_en', ''),
+            shelter.get('address', ''),
+            shelter.get('address_en', ''),
+            district or '',
+        )
+        if query and not any(
+            query in value.casefold()
+            for value in searchable_values
+            if isinstance(value, str)
+        ):
+            continue
+        if shelter_name and not any(
+            shelter_name in value.casefold()
+            for key in ('name', 'name_en')
+            if isinstance((value := shelter.get(key, '')), str)
+        ):
+            continue
+        if hazard and (
+            normalized_hazard is None
+            or normalized_hazard not in (get_shelter_hazards(shelter) or [])
+        ):
+            continue
+        if conditions:
+            registered_conditions = get_shelter_conditions(shelter)
+            if registered_conditions is None or not normalized_conditions.issubset(
+                set(registered_conditions)
+            ):
+                continue
+        results.append(shelter)
+    return results
 
 
 def parse_area_warnings(warning_data):
@@ -498,12 +788,59 @@ def shelter_register():
 # 避難所検索ページ
 @app.route('/shelter_search')
 def shelter_search():
-    return render_template('shelter_search.html')
+    selected_district = request.args.get('district_filter', ALL_DISTRICTS)
+    keyword = request.args.get('keyword', '').strip()
+    shelter_name = request.args.get('shelter_name', '').strip()
+    hazard_values = request.args.getlist('hazard')
+    if len(hazard_values) > 1:
+        abort(400, description='災害種別は1つだけ指定してください。')
+    selected_hazard, selected_conditions = validate_hazard_conditions(
+        hazard_values[0] if hazard_values else '',
+        request.args.getlist('condition') + request.args.getlist('conditions'),
+    )
+    valid_district_values = {
+        ALL_DISTRICTS,
+        UNREGISTERED_DISTRICT,
+        *(f'{DISTRICT_VALUE_PREFIX}{district}' for district in get_shelter_districts()),
+    }
+    if selected_district not in valid_district_values:
+        selected_district = ALL_DISTRICTS
+    return render_template(
+        'shelter_search.html',
+        districts=get_shelter_districts(),
+        has_unregistered_district=any(
+            not isinstance(shelter, dict)
+            or not isinstance(shelter.get('district'), str)
+            or not shelter.get('district', '').strip()
+            for shelter in shelters
+        ),
+        selected_district=selected_district,
+        keyword=keyword,
+        shelter_name=shelter_name or keyword,
+        hazard_options=HAZARD_OPTIONS,
+        condition_options=CONDITION_OPTIONS,
+        selected_hazard=selected_hazard,
+        selected_conditions=selected_conditions,
+        has_districts=bool(get_shelter_districts()),
+    )
 
 # 全施設一覧ページ
 @app.route('/all_shelters')
 def all_shelters():
-    return render_template('search_results.html', results=shelters)
+    results = [
+        prepare_shelter_for_results(shelter)
+        for shelter in shelters
+        if isinstance(shelter, dict)
+    ]
+    return render_template(
+        'search_results.html',
+        results=results,
+        is_all_shelters=True,
+        selected_district=ALL_DISTRICTS,
+        selected_district_label='すべての地区',
+        keyword='',
+        total_shelter_count=len(results),
+    )
 
 
 # 指示ボード：住民向けの指示を一覧で確認する
@@ -516,13 +853,99 @@ def board():
 # 検索結果ページ：templates/search_results.html を返す
 @app.route('/search_results')
 def search_results():
-    results = filter_shelters(request.args.get('district'))
-    return render_template('search_results.html', results=results)
+    selected_district = request.args.get('district_filter')
+    if selected_district is None:
+        legacy_district = request.args.get('district')
+        selected_district = (
+            f'{DISTRICT_VALUE_PREFIX}{legacy_district}'
+            if legacy_district
+            else ALL_DISTRICTS
+        )
+    keyword = request.args.get('keyword', '').strip()
+    shelter_name = request.args.get('shelter_name', '').strip()
+    hazard_values = request.args.getlist('hazard')
+    if len(hazard_values) > 1:
+        abort(400, description='災害種別は1つだけ指定してください。')
+    selected_hazard, selected_conditions = validate_hazard_conditions(
+        hazard_values[0] if hazard_values else '',
+        request.args.getlist('condition') + request.args.getlist('conditions'),
+    )
+
+    valid_district_values = {
+        ALL_DISTRICTS,
+        UNREGISTERED_DISTRICT,
+        *(f'{DISTRICT_VALUE_PREFIX}{district}' for district in get_shelter_districts()),
+    }
+    if selected_district not in valid_district_values:
+        selected_district = ALL_DISTRICTS
+
+    results = [
+        prepare_shelter_for_results(shelter)
+        for shelter in search_shelters(
+            selected_district,
+            keyword,
+            shelter_name,
+            selected_hazard,
+            selected_conditions,
+        )
+    ]
+    if selected_district == UNREGISTERED_DISTRICT:
+        selected_district_label = '地区未登録'
+    elif selected_district.startswith(DISTRICT_VALUE_PREFIX):
+        selected_district_label = selected_district[len(DISTRICT_VALUE_PREFIX):]
+    else:
+        selected_district_label = 'すべての地区'
+
+    return render_template(
+        'search_results.html',
+        results=results,
+        is_all_shelters=False,
+        selected_district=selected_district,
+        selected_district_label=selected_district_label,
+        keyword=keyword,
+        shelter_name=shelter_name,
+        selected_hazard=selected_hazard,
+        selected_conditions=selected_conditions,
+        hazard_options=HAZARD_OPTIONS,
+        condition_options=CONDITION_OPTIONS,
+        total_shelter_count=sum(isinstance(shelter, dict) for shelter in shelters),
+        districts=get_shelter_districts(),
+        has_unregistered_district=any(
+            not isinstance(shelter, dict)
+            or not isinstance(shelter.get('district'), str)
+            or not shelter.get('district', '').strip()
+            for shelter in shelters
+        ),
+    )
 
 # JSON API：/shelters?district=地区名
 @app.route('/shelters', methods=['GET'])
 def get_shelters():
-    results = filter_shelters(request.args.get('district'))
+    district_filter = request.args.get('district_filter')
+    if district_filter is None:
+        district = request.args.get('district', '')
+        district_filter = (
+            f'{DISTRICT_VALUE_PREFIX}{district}' if district else ALL_DISTRICTS
+        )
+    name_values = request.args.getlist('shelter_name')
+    if not name_values:
+        name_values = request.args.getlist('name')
+    if len(name_values) > 1:
+        abort(400, description='避難所名は1つだけ指定してください。')
+    hazard_values = request.args.getlist('hazard')
+    if len(hazard_values) > 1:
+        abort(400, description='災害種別は1つだけ指定してください。')
+    hazard, conditions = validate_hazard_conditions(
+        hazard_values[0] if hazard_values else '',
+        request.args.getlist('condition') + request.args.getlist('conditions'),
+    )
+    results = search_shelters(
+        district_filter,
+        request.args.get('keyword', ''),
+        name_values[0] if name_values else '',
+        hazard,
+        conditions,
+    )
 
     if not results:
         # 見つからなければエラー JSON を返す

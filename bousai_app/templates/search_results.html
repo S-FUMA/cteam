@@ -1,20 +1,605 @@
 {% extends "base.html" %}
 
+{% block title %}{% if is_all_shelters %}全施設一覧{% else %}避難所検索結果{% endif %} - 防災アプリ{% endblock %}
+
 {% block content %}
-<h2>検索結果</h2>
+<style>
+  .shelter-results-page {
+    color: #24364b;
+  }
 
-{% if results %}
-  <ul>
-    {% for shelter in results %}
-    <li>{{ shelter.name }}</li>
-    {% endfor %}
-  </ul>
-{% else %}
-  <p>該当する避難所が見つかりませんでした</p>
-{% endif %}
+  .shelter-results-page h2 {
+    color: #2856ad;
+  }
 
-<p>
-  <a href="/shelter_search">検索画面に戻る</a> |
-  <a href="/">トップページへ戻る</a>
-</p>
+  .shelter-results-summary,
+  .shelter-results-card,
+  .shelter-results-empty {
+    padding: 22px;
+    border: 1px solid #edf0f4;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 5px 18px rgb(42 66 96 / 6%);
+  }
+
+  .shelter-results-summary {
+    margin-bottom: 18px;
+  }
+
+  .shelter-results-summary p {
+    margin: 5px 0;
+  }
+
+  .shelter-results-list {
+    display: grid;
+    gap: 16px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .shelter-results-card h3 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 9px;
+    margin: 0 0 14px;
+    color: #2856ad;
+    font-size: 20px;
+    line-height: 1.4;
+  }
+
+  .shelter-results-title-text {
+    flex: 0 0 auto;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .shelter-results-facilities {
+    display: inline-flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .shelter-facility-icon {
+    position: relative;
+    display: inline-grid;
+    width: 27px;
+    height: 27px;
+    flex: 0 0 27px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #2856ad;
+    cursor: help;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .shelter-facility-icon:hover,
+  .shelter-facility-icon:focus-visible,
+  .shelter-facility-icon.is-tooltip-open {
+    background: #eef4fc;
+    outline: none;
+  }
+
+  .shelter-facility-icon:focus-visible {
+    box-shadow: 0 0 0 2px #7da4e8;
+  }
+
+  .shelter-facility-tooltip,
+  .shelter-facility-tooltip-measure {
+    position: absolute;
+    z-index: 2100;
+    bottom: calc(100% + 7px);
+    left: calc(50% + var(--shelter-tooltip-shift, 0px));
+    width: max-content;
+    max-width: calc(100vw - 16px);
+    padding: 5px 8px;
+    border-radius: 5px;
+    background: #343a40;
+    color: #fff;
+    font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translateX(-50%);
+    visibility: hidden;
+  }
+
+  .shelter-facility-tooltip::after {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    border: 5px solid transparent;
+    border-top-color: #343a40;
+    content: "";
+    transform: translateX(-50%);
+  }
+
+  .shelter-facility-icon:hover .shelter-facility-tooltip,
+  .shelter-facility-icon:focus-visible .shelter-facility-tooltip,
+  .shelter-facility-icon.is-tooltip-open .shelter-facility-tooltip {
+    visibility: visible;
+  }
+
+  .shelter-results-name-en,
+  .shelter-results-address-en {
+    display: block;
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 400;
+  }
+
+  .shelter-results-status {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #eef2f7;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .shelter-results-status--open {
+    background: #e8f5ed;
+    color: #176b3a;
+  }
+
+  .shelter-results-status--not_open,
+  .shelter-results-status--closed {
+    background: #fff0f0;
+    color: #a12626;
+  }
+
+  .shelter-results-acceptance {
+    font-weight: 700;
+  }
+
+  .shelter-results-details {
+    display: grid;
+    grid-template-columns: minmax(130px, 190px) 1fr;
+    gap: 10px 16px;
+    margin: 0;
+  }
+
+  .shelter-results-details dt {
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .shelter-results-details dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .shelter-results-equipment {
+    margin: 0;
+    padding-left: 20px;
+  }
+
+  .shelter-results-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .shelter-results-tag {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #eef4fc;
+    color: #2856ad;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .shelter-results-tag--condition {
+    background: #eef2f7;
+    color: #475569;
+  }
+
+  .shelter-results-empty {
+    margin-bottom: 18px;
+  }
+
+  .shelter-results-empty h3 {
+    margin-top: 0;
+    color: #2856ad;
+  }
+
+  .shelter-results-search-again {
+    margin-top: 18px;
+  }
+
+  .shelter-results-search-again .shelter-search-form {
+    display: grid;
+    gap: 12px;
+    max-width: 620px;
+  }
+
+  .shelter-results-search-again .shelter-search-field {
+    display: grid;
+    gap: 6px;
+  }
+
+  .shelter-results-search-again label {
+    font-weight: 700;
+  }
+
+  .shelter-results-search-again select,
+  .shelter-results-search-again input {
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+    color: #24364b;
+    font: inherit;
+  }
+
+  .shelter-results-search-again input[type="search"] {
+    font-size: 16px;
+  }
+
+  .shelter-results-search-again fieldset {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid #dbe3ed;
+    border-radius: 8px;
+  }
+
+  .shelter-results-search-again legend,
+  .shelter-results-search-again label {
+    font-weight: 700;
+  }
+
+  .shelter-results-search-again .shelter-search-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+
+  .shelter-results-search-again .shelter-search-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .shelter-results-search-again input[type="checkbox"] {
+    width: 18px;
+    min-height: 18px;
+    accent-color: #2856ad;
+  }
+
+  .shelter-results-search-again .shelter-search-button {
+    justify-self: stretch;
+    min-height: 52px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 6px;
+    background: #2856ad;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    transition: background-color 120ms ease, transform 120ms ease;
+  }
+
+  .shelter-results-search-again .shelter-search-button:hover,
+  .shelter-results-search-again .shelter-search-button:focus-visible {
+    background: #1d438e;
+  }
+
+  .shelter-results-search-again .shelter-search-button:active {
+    background: #173873;
+    transform: translateY(1px);
+  }
+
+  .shelter-results-search-again .shelter-search-button:disabled {
+    background: #647da9;
+    cursor: wait;
+    transform: none;
+  }
+
+  .shelter-results-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 20px;
+  }
+
+  .shelter-results-actions a {
+    color: #2856ad;
+    font-weight: 700;
+  }
+
+  @media (max-width: 600px) {
+    .shelter-results-summary,
+    .shelter-results-card,
+    .shelter-results-empty {
+      padding: 17px;
+      border-radius: 12px;
+    }
+
+    .shelter-results-details {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .shelter-results-details dd + dt {
+      margin-top: 8px;
+    }
+  }
+</style>
+
+<div class="shelter-results-page">
+  <h2>{% if is_all_shelters %}登録済みの全施設{% else %}避難所検索結果{% endif %}</h2>
+
+  <section class="shelter-results-summary" aria-label="検索条件と結果件数">
+    <p><strong>地区：</strong>{{ selected_district_label }}</p>
+    {% if not is_all_shelters %}
+      <p><strong>避難所名：</strong>{{ shelter_name or '指定なし' }}</p>
+      {% if keyword %}<p><strong>キーワード：</strong>{{ keyword }}</p>{% endif %}
+      <p><strong>災害種別：</strong>{{ selected_hazard or '指定なし' }}</p>
+      <p><strong>設備条件：</strong>{{ selected_conditions|join('、') or '指定なし' }}</p>
+    {% endif %}
+    <p><strong>結果：</strong>{{ results|length }} 件</p>
+  </section>
+
+  {% if results %}
+    <ul class="shelter-results-list">
+      {% for shelter in results %}
+        <li class="shelter-results-card">
+          {% set shelter_index = loop.index %}
+          <h3>
+            <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+            <span class="shelter-results-title-text">
+              {{ shelter.name or '名称未登録' }}
+              {% if shelter.name_en_display %}<span class="shelter-results-name-en">{{ shelter.name_en_display }}</span>{% endif %}
+            </span>
+            <span class="shelter-results-facilities" aria-label="対応設備">
+              {% for facility_name, facility_value in shelter.facility_displays %}
+                {% if facility_value %}
+                  {% if facility_name == '高齢者向け設備' %}
+                    {% set facility_icon = 'fa-person-cane' %}
+                    {% set facility_tooltip = '高齢者向け設備' %}
+                  {% elif facility_name == 'ペット受け入れ' %}
+                    {% set facility_icon = 'fa-dog' %}
+                    {% set facility_tooltip = 'ペット受け入れ可' %}
+                  {% elif facility_name == '車椅子対応トイレ' %}
+                    {% set facility_icon = 'fa-wheelchair' %}
+                    {% set facility_tooltip = '車椅子対応トイレ' %}
+                  {% else %}
+                    {% set facility_icon = 'fa-wheelchair-move' %}
+                    {% set facility_tooltip = 'バリアフリー' %}
+                  {% endif %}
+                  <button class="shelter-facility-icon" type="button" aria-label="{{ facility_tooltip }}" aria-describedby="facility-tooltip-{{ shelter_index }}-{{ loop.index }}">
+                    <i class="fa-solid {{ facility_icon }}" aria-hidden="true"></i>
+                    <span class="shelter-facility-tooltip" id="facility-tooltip-{{ shelter_index }}-{{ loop.index }}" role="tooltip">{{ facility_tooltip }}</span>
+                  </button>
+                {% endif %}
+              {% endfor %}
+            </span>
+          </h3>
+          <dl class="shelter-results-details">
+            <dt>地区</dt>
+            <dd>{{ shelter.district_display }}</dd>
+
+            <dt>住所</dt>
+            <dd>
+              {{ shelter.address or '未登録' }}
+              {% if shelter.address_en_display %}<span class="shelter-results-address-en">{{ shelter.address_en_display }}</span>{% endif %}
+            </dd>
+
+            <dt>開設状況</dt>
+            <dd><span class="shelter-results-status shelter-results-status--{{ shelter.status_class }}">{{ shelter.status_display }}</span></dd>
+
+            <dt>収容人数</dt>
+            <dd>{% if shelter.capacity_display is not none %}{{ shelter.capacity_display }} 人{% else %}未登録{% endif %}</dd>
+
+            <dt>現在の避難者数</dt>
+            <dd>{% if shelter.evacuees_display is not none %}{{ shelter.evacuees_display }} 人{% else %}未登録{% endif %}</dd>
+
+            <dt>受け入れ余力</dt>
+            <dd class="shelter-results-acceptance">{{ shelter.acceptance_display }}</dd>
+
+            <dt>対応する災害</dt>
+            <dd>
+              {% if shelter.hazards_display is none %}
+                対応災害未登録
+              {% elif shelter.hazards_display %}
+                <ul class="shelter-results-tags">
+                  {% for hazard in shelter.hazards_display %}<li><span class="shelter-results-tag">{{ hazard }}</span></li>{% endfor %}
+                </ul>
+              {% else %}
+                対応災害なし
+              {% endif %}
+            </dd>
+
+            <dt>設備条件</dt>
+            <dd>
+              {% if shelter.conditions_display is none %}
+                設備条件未登録
+              {% elif shelter.conditions_display %}
+                <ul class="shelter-results-tags">
+                  {% for condition in shelter.conditions_display %}<li><span class="shelter-results-tag shelter-results-tag--condition">{{ condition }}</span></li>{% endfor %}
+                </ul>
+              {% else %}
+                該当する設備条件なし
+              {% endif %}
+            </dd>
+
+            <dt>その他の設備</dt>
+            <dd>
+              {% if 'facilities' not in shelter %}未登録
+              {% elif shelter.other_facilities %}
+                <ul class="shelter-results-equipment">
+                  {% for facility in shelter.other_facilities %}<li>{{ facility }}</li>{% endfor %}
+                </ul>
+              {% else %}なし{% endif %}
+            </dd>
+          </dl>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <section class="shelter-results-empty" aria-live="polite">
+      {% if total_shelter_count == 0 %}
+        <h3>避難所データが登録されていません</h3>
+        <p>現在、表示できる避難所はありません。</p>
+      {% else %}
+        <h3>条件に合う避難所が見つかりませんでした</h3>
+        <p>見つかりませんでした。地区名や施設名を短くして試してください。</p>
+      {% endif %}
+
+      {% if not is_all_shelters %}
+        <div class="shelter-results-search-again">
+          <form class="shelter-search-form" action="{{ url_for('search_results') }}" method="get">
+            <div class="shelter-search-field">
+              <label for="results-district-filter">地区</label>
+              <select id="results-district-filter" name="district_filter">
+                <option value="__all__" {% if selected_district == '__all__' %}selected{% endif %}>すべての地区</option>
+                {% if has_unregistered_district %}
+                  <option value="__unregistered__" {% if selected_district == '__unregistered__' %}selected{% endif %}>地区未登録</option>
+                {% endif %}
+                {% for district in districts %}
+                  {% set district_value = 'district:' ~ district %}
+                  <option value="{{ district_value }}" {% if selected_district == district_value %}selected{% endif %}>{{ district }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="shelter-search-field">
+              <label for="results-keyword">避難所を探す</label>
+              <input type="search" id="results-keyword" name="keyword" value="{{ keyword or shelter_name }}" placeholder="例：北区、梅田、大阪市立上福島小学校">
+              <small>地区名・施設名・住所で検索できます</small>
+            </div>
+            <div class="shelter-search-field">
+              <label for="results-hazard">災害の種類</label>
+              <select id="results-hazard" name="hazard">
+                <option value="">指定しない</option>
+                {% for option in hazard_options %}
+                  <option value="{{ option }}" {% if selected_hazard == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <fieldset>
+              <legend>設備条件</legend>
+              <div class="shelter-search-checkboxes">
+                {% for option in condition_options %}
+                  <label class="shelter-search-checkbox">
+                    <input type="checkbox" name="condition" value="{{ option }}" {% if option in selected_conditions %}checked{% endif %}>
+                    <span>{{ option }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </fieldset>
+            <button class="shelter-search-button" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> 避難所を検索</button>
+          </form>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  <nav class="shelter-results-actions" aria-label="避難所検索の操作">
+    {% if not is_all_shelters %}
+      <a href="{{ url_for('shelter_search', district_filter=selected_district, keyword=keyword, shelter_name=shelter_name, hazard=selected_hazard, condition=selected_conditions) }}">検索条件を保って検索画面へ戻る</a>
+    {% endif %}
+    <a href="{{ url_for('shelter_search') }}">避難所検索へ</a>
+    <a href="{{ url_for('all_shelters') }}">登録済みの全施設を見る</a>
+    <a href="{{ url_for('index') }}">ホームへ戻る</a>
+  </nav>
+</div>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.shelter-search-form').forEach(function(form) {
+      form.addEventListener('submit', function(event) {
+        const submitButton = event.submitter || form.querySelector('button[type="submit"]');
+        if (!submitButton || submitButton.disabled) {
+          return;
+        }
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> 検索中…';
+      });
+    });
+
+    const facilityButtons = document.querySelectorAll('.shelter-facility-icon');
+    const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)');
+
+    function positionTooltip(button) {
+      const tooltip = button.querySelector('.shelter-facility-tooltip');
+      const buttonBounds = button.getBoundingClientRect();
+      const tooltipWidth = tooltip.getBoundingClientRect().width;
+      const center = buttonBounds.left + buttonBounds.width / 2;
+      const minShift = 8 + tooltipWidth / 2 - center;
+      const maxShift = window.innerWidth - 8 - tooltipWidth / 2 - center;
+      button.style.setProperty('--shelter-tooltip-shift', `${Math.min(Math.max(0, minShift), maxShift)}px`);
+    }
+
+    facilityButtons.forEach(function(button) {
+      button.addEventListener('pointerenter', function() {
+        positionTooltip(button);
+      });
+      button.addEventListener('focus', function() {
+        positionTooltip(button);
+      });
+      button.addEventListener('blur', function() {
+        button.classList.remove('is-tooltip-open');
+      });
+      button.addEventListener('click', function() {
+        if (!coarsePointer.matches) {
+          return;
+        }
+        const isOpen = button.classList.contains('is-tooltip-open');
+        facilityButtons.forEach(function(otherButton) {
+          otherButton.classList.remove('is-tooltip-open');
+        });
+        if (!isOpen) {
+          positionTooltip(button);
+          button.classList.add('is-tooltip-open');
+        }
+      });
+    });
+
+    document.addEventListener('click', function(event) {
+      if (!event.target.closest('.shelter-facility-icon')) {
+        facilityButtons.forEach(function(button) {
+          button.classList.remove('is-tooltip-open');
+        });
+      }
+    });
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        facilityButtons.forEach(function(button) {
+          button.classList.remove('is-tooltip-open');
+        });
+      }
+    });
+
+    window.addEventListener('resize', function() {
+      facilityButtons.forEach(function(button) {
+        if (button.matches(':hover, :focus-visible, .is-tooltip-open')) {
+          positionTooltip(button);
+        }
+      });
+    });
+  });
+</script>
 {% endblock %}

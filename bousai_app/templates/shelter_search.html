@@ -1,8 +1,229 @@
 {% extends "base.html" %}
 
-{% block content %}
-<h2>避難所検索</h2>
-<p>登録されている避難所を確認できます。</p>
+{% block title %}避難所検索 - 防災アプリ{% endblock %}
 
-<p><a href="/all_shelters">全施設一覧</a></p>
+{% block content %}
+<style>
+  .shelter-search-page {
+    color: #24364b;
+  }
+
+  .shelter-search-card {
+    padding: 28px;
+    border: 1px solid #edf0f4;
+    border-radius: 15px;
+    background: #fff;
+    box-shadow: 0 5px 18px rgb(42 66 96 / 6%);
+  }
+
+  .shelter-search-card h2 {
+    margin-top: 0;
+    color: #2856ad;
+  }
+
+  .shelter-search-form {
+    display: grid;
+    gap: 16px;
+    max-width: 620px;
+  }
+
+  .shelter-search-field {
+    display: grid;
+    gap: 6px;
+  }
+
+  .shelter-search-field label {
+    font-weight: 700;
+  }
+
+  .shelter-search-field select,
+  .shelter-search-field input {
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+    color: #24364b;
+    font: inherit;
+  }
+
+  .shelter-search-field input {
+    font-size: 16px;
+  }
+
+  .shelter-search-field input::placeholder {
+    color: #64748b;
+    opacity: 1;
+  }
+
+  .shelter-search-fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid #dbe3ed;
+    border-radius: 8px;
+  }
+
+  .shelter-search-fieldset legend {
+    padding: 0 6px;
+    color: #334155;
+    font-weight: 700;
+  }
+
+  .shelter-search-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+  }
+
+  .shelter-search-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 32px;
+  }
+
+  .shelter-search-checkbox input {
+    width: 18px;
+    height: 18px;
+    accent-color: #2856ad;
+  }
+
+  .shelter-search-note {
+    margin: 0;
+    color: #64748b;
+    font-size: 14px;
+  }
+
+  .shelter-search-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .shelter-search-button {
+    display: inline-block;
+    width: 100%;
+    min-height: 56px;
+    padding: 12px 18px;
+    border: 0;
+    border-radius: 6px;
+    background: #2856ad;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-size: 19px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background-color 120ms ease, transform 120ms ease;
+  }
+
+  .shelter-search-button:hover,
+  .shelter-search-button:focus-visible {
+    background: #1d438e;
+  }
+
+  .shelter-search-button:active {
+    background: #173873;
+    transform: translateY(1px);
+  }
+
+  .shelter-search-button:disabled {
+    background: #647da9;
+    cursor: wait;
+    transform: none;
+  }
+
+  .shelter-search-secondary {
+    color: #2856ad;
+    font-weight: 700;
+  }
+
+  @media (max-width: 600px) {
+    .shelter-search-card {
+      padding: 18px;
+      border-radius: 12px;
+    }
+
+    .shelter-search-button {
+      width: 100%;
+    }
+  }
+</style>
+
+<div class="shelter-search-page">
+  <section class="shelter-search-card" aria-labelledby="shelter-search-title">
+    <h2 id="shelter-search-title"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> 災害別に避難所を探す</h2>
+    <p>地区名・避難所名・住所の一部から検索できます。災害種別と設備条件を複数指定した場合は、すべての条件を満たす避難所を表示します。</p>
+
+    <form class="shelter-search-form" id="shelter-search-form" action="{{ url_for('search_results') }}" method="get">
+      <div class="shelter-search-field">
+        <label for="shelter-keyword">避難所を探す</label>
+        <input type="search" id="shelter-keyword" name="keyword" value="{{ keyword or shelter_name }}" placeholder="例：北区、梅田、大阪市立上福島小学校" autocomplete="off">
+        <p class="shelter-search-note">地区名・施設名・住所で検索できます</p>
+      </div>
+      <button class="shelter-search-button" id="shelter-search-submit" type="submit">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> 避難所を検索
+      </button>
+
+      <div class="shelter-search-field">
+        <label for="district-filter">地区</label>
+        <select id="district-filter" name="district_filter">
+          <option value="__all__" {% if selected_district == '__all__' %}selected{% endif %}>すべての地区</option>
+          {% if has_unregistered_district %}
+            <option value="__unregistered__" {% if selected_district == '__unregistered__' %}selected{% endif %}>地区未登録</option>
+          {% endif %}
+          {% for district in districts %}
+            {% set district_value = 'district:' ~ district %}
+            <option value="{{ district_value }}" {% if selected_district == district_value %}selected{% endif %}>{{ district }}</option>
+          {% endfor %}
+        </select>
+        {% if not has_districts %}
+          <p class="shelter-search-note">地区データが登録されていないため、地区での絞り込みは利用できません。</p>
+        {% endif %}
+      </div>
+
+      <div class="shelter-search-field">
+        <label for="hazard">災害の種類</label>
+        <select id="hazard" name="hazard">
+          <option value="">指定しない</option>
+          {% for option in hazard_options %}
+            <option value="{{ option }}" {% if selected_hazard == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <fieldset class="shelter-search-fieldset">
+        <legend>設備条件（任意・複数選択可）</legend>
+        <div class="shelter-search-checkboxes">
+          {% for option in condition_options %}
+            <label class="shelter-search-checkbox">
+              <input type="checkbox" name="condition" value="{{ option }}" {% if option in selected_conditions %}checked{% endif %}>
+              <span>{{ option }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="shelter-search-actions">
+        <a class="shelter-search-secondary" href="{{ url_for('all_shelters') }}">登録済みの全施設を見る</a>
+      </div>
+    </form>
+  </section>
+</div>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('shelter-search-form');
+    const submitButton = document.getElementById('shelter-search-submit');
+    form.addEventListener('submit', function() {
+      if (submitButton.disabled) {
+        return;
+      }
+      submitButton.disabled = true;
+      submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> 検索中…';
+    });
+  });
+</script>
 {% endblock %}
