@@ -29,7 +29,7 @@ PREFECTURE_CODE = "020000"  # 青森県
 AREA_NAME = "青森市"
 
 # ワークショップ課題：青森市の市区町村コードに変更する
-AREA_CODE = "020010"  # 青森市の市区町村コード
+AREA_CODE = "0220100"  # 青森市の市区町村コード
 
 WARNING_URL = (
     f"https://www.jma.go.jp/bosai/warning/data/r8/{PREFECTURE_CODE}.json"

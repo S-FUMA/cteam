@@ -189,6 +189,54 @@
         font-size: 14px;
     }
 
+    #weatherContent .weather-row {
+        display: flex;
+        align-items: center;
+        margin: 0;
+        line-height: 1.5;
+    }
+
+    #weatherContent .weather-row .fa-fw {
+        flex: 0 0 1.25em;
+        width: 1.25em;
+        margin-right: 6px;
+        text-align: center;
+    }
+
+    #weatherContent .weather-location {
+        margin-bottom: 14px;
+        color: #333;
+        font-size: 17px;
+        font-weight: 700;
+    }
+
+    #weatherContent .weather-location .fa-location-dot {
+        color: #444;
+    }
+
+    #weatherContent .weather-status {
+        margin-bottom: 16px;
+        color: #28a745;
+        font-size: 17px;
+        font-weight: 700;
+    }
+
+    #weatherContent .weather-status .fa-circle-check {
+        color: #28a745;
+    }
+
+    #weatherContent .weather-metadata {
+        margin-bottom: 4px;
+        color: #777;
+        font-size: 0.9em;
+        font-weight: 400;
+    }
+
+    #weatherContent .weather-metadata .fa-clock,
+    #weatherContent .weather-metadata .fa-satellite-dish {
+        color: #888;
+    }
+
     @media (max-width: 600px) {
         body:has(.home-page) > h1 {
             left: 18px;
@@ -332,14 +380,14 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             warningsHtml += '</ul>';
         } else {
-            warningsHtml = '<p>現在、警報・注意報は発表されていません</p>';
+            warningsHtml = '<p class="weather-row weather-status"><i class="fa-solid fa-circle-check fa-fw" aria-hidden="true"></i><span>現在、警報・注意報は発表されていません</span></p>';
         }
 
         weatherContent.innerHTML = `
-            <p>対象地域: ${data.area_name || '青森市'}</p>
+            <p class="weather-row weather-location"><i class="fa-solid fa-location-dot fa-fw" aria-hidden="true"></i><span>対象地域: ${data.area_name || '青森市'}</span></p>
             ${warningsHtml}
-            <p>最終確認: <span id="lastFetchTime">${data.last_fetch_time || '更新中...'}</span></p>
-            <p>気象庁最終発表: ${data.report_time || '不明'}</p>
+            <p class="weather-row weather-metadata"><i class="fa-regular fa-clock fa-fw" aria-hidden="true"></i><span>最終確認: <span id="lastFetchTime">${data.last_fetch_time || '更新中...'}</span></span></p>
+            <p class="weather-row weather-metadata"><i class="fa-solid fa-satellite-dish fa-fw" aria-hidden="true"></i><span>気象庁最終発表: ${data.report_time || '不明'}</span></p>
         `;
     }
 
