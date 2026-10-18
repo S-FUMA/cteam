@@ -4,101 +4,10 @@
 
 {% block content %}
 <style>
-    body:has(.home-page) {
-        margin: 0;
-        padding-top: 70px;
-        background: #f7f8fa;
-        color: #24364b;
-        font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-    }
-
-    body:has(.home-page)::before {
-        position: fixed;
-        z-index: 2000;
-        top: 0;
-        right: 0;
-        left: 0;
-        height: 70px;
-        background: #2856ad;
-        content: "";
-    }
-
-    body:has(.home-page) > h1 {
-        position: fixed;
-        z-index: 2001;
-        top: 0;
-        left: max(24px, calc((100vw - 1380px) / 2));
-        display: flex;
-        align-items: center;
-        height: 70px;
-        margin: 0;
-        color: #fff;
-        font-size: 24px;
-        font-weight: 700;
-    }
-
-    body:has(.home-page) > nav,
-    body:has(.home-page) > hr {
-        display: none;
-    }
-
     body:has(.home-page) > main {
         max-width: 950px;
         margin: 0 auto;
         padding: 32px 20px 56px;
-    }
-
-    .home-menu-button {
-        position: fixed;
-        z-index: 2002;
-        top: 11px;
-        right: max(24px, calc((100vw - 1380px) / 2));
-        display: grid;
-        width: 48px;
-        height: 48px;
-        place-items: center;
-        border: 0;
-        border-radius: 5px;
-        background: transparent;
-        color: #fff;
-        cursor: pointer;
-        font-size: 26px;
-        line-height: 1;
-    }
-
-    .home-menu-button:hover,
-    .home-menu-button:focus-visible {
-        background: rgb(255 255 255 / 16%);
-    }
-
-    .home-menu-panel {
-        position: fixed;
-        z-index: 2003;
-        top: 70px;
-        right: max(16px, calc((100vw - 1380px) / 2));
-        display: grid;
-        min-width: 220px;
-        padding: 8px;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        background: #fff;
-        box-shadow: 0 8px 24px rgb(29 50 79 / 16%);
-    }
-
-    .home-menu-panel[hidden] {
-        display: none;
-    }
-
-    .home-menu-panel a {
-        padding: 12px 14px;
-        border-radius: 4px;
-        color: #2856ad;
-        text-decoration: none;
-    }
-
-    .home-menu-panel a:hover,
-    .home-menu-panel a:focus-visible {
-        background: #eef4fc;
     }
 
     .home-page {
@@ -122,12 +31,216 @@
         font-weight: 700;
     }
 
+    .emergency-panel {
+        border-color: #f2caca;
+        background: #fffafa;
+    }
+
+    .emergency-panel h2,
+    .urgent-notice {
+        color: #b42323;
+    }
+
+    .emergency-notice {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px;
+        border-radius: 9px;
+        background: #f3f5f7;
+        color: #334155;
+    }
+
+    .emergency-notice.urgent-notice {
+        background: #fff0f0;
+        color: #8f1d1d;
+    }
+
+    .emergency-notice + .emergency-notice {
+        margin-top: 10px;
+    }
+
+    .emergency-notice p {
+        margin: 0;
+        font-weight: 700;
+    }
+
+    .home-detail-link {
+        display: inline-block;
+        margin-top: 14px;
+        color: #2856ad;
+        font-weight: 700;
+    }
+
+    .home-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin: -4px 0 16px;
+    }
+
+    .home-toolbar label,
+    .home-toolbar select {
+        color: #334155;
+        font-size: 15px;
+    }
+
+    .home-toolbar select {
+        min-width: 190px;
+        padding: 8px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    .disaster-list,
+    .instruction-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .disaster-item,
+    .instruction-item {
+        display: grid;
+        grid-template-columns: minmax(120px, 170px) 1fr;
+        gap: 8px 16px;
+        padding: 14px 16px;
+        border-radius: 9px;
+        background: #f3f5f7;
+    }
+
+    .disaster-item[hidden] {
+        display: none;
+    }
+
+    .disaster-category,
+    .instruction-time {
+        color: #64748b;
+        font-size: 14px;
+    }
+
+    .disaster-content,
+    .instruction-content {
+        font-weight: 700;
+    }
+
+    .instruction-item.urgent {
+        border-left: 4px solid #c62828;
+        background: #fff0f0;
+        color: #9b1c1c;
+    }
+
+    .instruction-status {
+        grid-column: 2;
+        color: #64748b;
+        font-size: 13px;
+    }
+
+    .empty-message {
+        margin: 0;
+        color: #64748b;
+    }
+
     #shelterMap {
         position: relative;
         z-index: 0;
         height: 365px;
         border-radius: 10px;
         background: #b4dce4;
+    }
+
+    .map-controls,
+    .map-legend {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin-top: 14px;
+    }
+
+    .map-controls button,
+    .weather-refresh-button {
+        padding: 8px 12px;
+        border: 0;
+        border-radius: 6px;
+        background: #2856ad;
+        color: #fff;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+    }
+
+    .map-controls button:hover,
+    .weather-refresh-button:hover {
+        background: #1d438e;
+    }
+
+    .map-message,
+    .map-legend,
+    .map-shelter-list {
+        color: #475569;
+        font-size: 14px;
+    }
+
+    .map-message {
+        margin: 10px 0 0;
+    }
+
+    .map-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .map-marker {
+        border: 0;
+        background: transparent;
+        color: #64748b;
+        font-size: 28px;
+        text-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+    }
+
+    .map-marker-open {
+        color: #16834a;
+    }
+
+    .map-marker-closed {
+        color: #c62828;
+    }
+
+    .map-marker-unknown {
+        color: #64748b;
+    }
+
+    .map-marker-current {
+        color: #1769d2;
+    }
+
+    .leaflet-tooltip.shelter-tooltip {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        color: #24364b;
+        box-shadow: 0 5px 18px rgb(42 66 96 / 12%);
+        font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+        font-size: 14px;
+    }
+
+    .leaflet-tooltip-top.shelter-tooltip::before {
+        border-top-color: #fff;
+    }
+
+    .map-shelter-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin: 12px 0 0;
+        padding-left: 20px;
     }
 
     .weather-heading {
@@ -151,9 +264,8 @@
         white-space: nowrap;
     }
 
-    .weather-refresh-icon {
-        font-size: 21px;
-        font-weight: 700;
+    .weather-refresh-button {
+        margin-bottom: 20px;
     }
 
     #weatherContent {
@@ -238,15 +350,6 @@
     }
 
     @media (max-width: 600px) {
-        body:has(.home-page) > h1 {
-            left: 18px;
-            font-size: 21px;
-        }
-
-        .home-menu-button {
-            right: 12px;
-        }
-
         body:has(.home-page) > main {
             padding: 20px 14px 36px;
         }
@@ -264,6 +367,21 @@
             font-size: 19px;
         }
 
+        .disaster-item,
+        .instruction-item {
+            grid-template-columns: 1fr;
+            gap: 5px;
+        }
+
+        .instruction-status {
+            grid-column: 1;
+        }
+
+        .home-toolbar {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
         #shelterMap {
             height: 320px;
         }
@@ -279,88 +397,246 @@
         }
 
         .weather-refresh-label {
-            padding-bottom: 14px;
+            padding-bottom: 0;
             font-size: 14px;
+        }
+
+        .weather-refresh-button {
+            margin-bottom: 14px;
         }
     }
 </style>
 
-<button class="home-menu-button" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="home-menu" title="メニュー">
-    <i class="fa-solid fa-bars" aria-hidden="true"></i>
-</button>
-<nav class="home-menu-panel" id="home-menu" aria-label="メインメニュー" hidden>
-    <a href="/">ホーム</a>
-    <a href="/shelter_search">避難所検索</a>
-    <a href="/shelter_register">避難所登録</a>
-    <a href="/board">指示・発信ボード</a>
-    {% if session.logged_in %}
-        <a href="/logout">ログアウト</a>
-    {% else %}
-        <a href="/login">ログイン</a>
-    {% endif %}
-</nav>
-
 <div class="home-page">
+    <section class="home-panel emergency-panel" aria-labelledby="emergency-title">
+        <h2 id="emergency-title"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 緊急のお知らせ</h2>
+        {% if emergency_notices %}
+            {% for notice in emergency_notices %}
+                <div class="emergency-notice{% if notice.is_urgent %} urgent-notice{% endif %}">
+                    <div>
+                        <p>{{ notice.content }}{% if notice.shelter %}（避難先: {{ notice.shelter }}）{% endif %}</p>
+                        <small>{{ notice.created_at or '受信日時不明' }}</small>
+                    </div>
+                    {% if notice.status %}<strong>{{ notice.status }}</strong>{% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="empty-message">現在、発信中の緊急なお知らせはありません。</p>
+        {% endif %}
+        <a class="home-detail-link" href="/board">詳細を見る <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+    </section>
+
+    <section class="home-panel" aria-labelledby="disaster-title">
+        <h2 id="disaster-title"><i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> 災害情報</h2>
+        <div class="home-toolbar">
+            <label for="disasterTypeFilter">情報の種類で絞り込み</label>
+            <select id="disasterTypeFilter">
+                <option value="">すべて</option>
+                {% for disaster_type in disaster_types %}
+                    <option value="{{ disaster_type }}">{{ disaster_type }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if disaster_events %}
+            <ul class="disaster-list" id="disasterList">
+                {% for event in disaster_events %}
+                    <li class="disaster-item" data-category="{{ event.category }}">
+                        <span class="disaster-category">
+                            {% if event.category == '大雨・土砂災害' %}
+                                <i class="fa-solid fa-cloud-showers-heavy" aria-hidden="true"></i>
+                            {% elif event.category == '洪水' %}
+                                <i class="fa-solid fa-water" aria-hidden="true"></i>
+                            {% elif event.category == '風・暴風雪' %}
+                                <i class="fa-solid fa-wind" aria-hidden="true"></i>
+                            {% elif event.category == '雪' %}
+                                <i class="fa-solid fa-snowflake" aria-hidden="true"></i>
+                            {% elif event.category == '雷' %}
+                                <i class="fa-solid fa-cloud-bolt" aria-hidden="true"></i>
+                            {% else %}
+                                <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i>
+                            {% endif %}
+                            {{ event.category }}
+                        </span>
+                        <span class="disaster-content">{{ event.content }}</span>
+                        <time class="disaster-category">{{ event.timestamp or '受信日時不明' }}</time>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-message">災害情報の履歴はありません。</p>
+        {% endif %}
+    </section>
+
     <section class="home-panel" aria-labelledby="shelter-map-title">
         <h2 id="shelter-map-title"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> 避難所マップ</h2>
         <div id="shelterMap"></div>
+        <div class="map-controls">
+            <button type="button" id="showCurrentLocation"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i> 現在地を表示</button>
+            <span class="map-message" id="mapMessage" aria-live="polite"></span>
+        </div>
+        <div class="map-legend" aria-label="避難所の開設状況">
+            <span class="map-legend-item"><i class="fa-solid fa-location-dot map-marker-open" aria-hidden="true"></i> 開設中</span>
+            <span class="map-legend-item"><i class="fa-solid fa-location-dot map-marker-closed" aria-hidden="true"></i> 未開設・閉鎖</span>
+            <span class="map-legend-item"><i class="fa-solid fa-location-dot map-marker-unknown" aria-hidden="true"></i> 状況未登録</span>
+        </div>
+        {% if shelter_map_data %}
+            <ul class="map-shelter-list" id="mapShelterList"></ul>
+        {% else %}
+            <p class="map-message">避難所の位置情報が登録されていないため、地図上に避難所を表示できません。</p>
+            {% if shelter_names %}
+                <ul class="map-shelter-list">
+                    {% for shelter_name in shelter_names %}
+                        <li><i class="fa-solid fa-location-dot" aria-hidden="true"></i> {{ shelter_name }}（位置未登録）</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endif %}
     </section>
 
     <section class="home-panel" aria-labelledby="weather-title">
         <div class="weather-heading">
             <h2 id="weather-title"><i class="fa-solid fa-cloud-sun" aria-hidden="true"></i> 青森市 気象警報・注意報</h2>
             <span class="weather-refresh-label"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> 10分おき自動更新</span>
+            <button type="button" class="weather-refresh-button" id="refreshHome"><i class="fa-solid fa-rotate" aria-hidden="true"></i> 画面を更新</button>
         </div>
         <div id="weatherContent">
             <p>読み込み中...</p>
         </div>
     </section>
+
+    <section class="home-panel" aria-labelledby="instruction-title">
+        <h2 id="instruction-title"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> 新着指示</h2>
+        {% if resident_notices %}
+            <ul class="instruction-list">
+                {% for notice in resident_notices %}
+                    <li class="instruction-item{% if notice.is_urgent and notice.status not in ('解除', '完了', '対応済み', '完了済み') %} urgent{% endif %}">
+                        <span class="instruction-time">{{ notice.created_at or '受信日時不明' }}</span>
+                        <span class="instruction-content">{{ notice.content }}{% if notice.shelter %}（避難先: {{ notice.shelter }}）{% endif %}</span>
+                        {% if notice.status %}<span class="instruction-status">状況: {{ notice.status }}</span>{% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-message">住民向けの指示はありません。</p>
+        {% endif %}
+        <a class="home-detail-link" href="/board">指示ボードを見る <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+    </section>
 </div>
 
-<!-- Leaflet の読み込み -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const menuButton = document.querySelector('.home-menu-button');
-    const menu = document.getElementById('home-menu');
+    const disasterTypeFilter = document.getElementById('disasterTypeFilter');
+    if (disasterTypeFilter) {
+        disasterTypeFilter.addEventListener('change', function() {
+            document.querySelectorAll('.disaster-item').forEach(function(item) {
+                item.hidden = disasterTypeFilter.value !== '' && item.dataset.category !== disasterTypeFilter.value;
+            });
+        });
+    }
 
-    menuButton.addEventListener('click', function() {
-        const isExpanded = menuButton.getAttribute('aria-expanded') === 'true';
-        menuButton.setAttribute('aria-expanded', String(!isExpanded));
-        menuButton.setAttribute('aria-label', isExpanded ? 'メニューを開く' : 'メニューを閉じる');
-        menu.hidden = isExpanded;
+    document.getElementById('refreshHome').addEventListener('click', function() {
+        window.location.reload();
     });
 
-    document.addEventListener('click', function(event) {
-        if (!menu.hidden && !menu.contains(event.target) && !menuButton.contains(event.target)) {
-            menu.hidden = true;
-            menuButton.setAttribute('aria-expanded', 'false');
-            menuButton.setAttribute('aria-label', 'メニューを開く');
-        }
-    });
-
-    // 地図の初期化（藤沢市周辺を中心に設定）
     const map = L.map('shelterMap').setView([35.3390, 139.4903], 12);
-
-    // OpenStreetMapタイルを追加
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         referrerPolicy: 'strict-origin-when-cross-origin'
     }).addTo(map);
 
-    // 気象警報・注意報の自動更新機能
+    const shelterLocations = {{ shelter_map_data|tojson }};
+    const shelterList = document.getElementById('mapShelterList');
+    const shelterBounds = [];
+    shelterLocations.forEach(function(shelter) {
+        const statusClass = shelter.open_status === 'open' ? 'open' :
+            shelter.open_status === 'closed' ? 'closed' : 'unknown';
+        const marker = L.marker([shelter.latitude, shelter.longitude], {
+            icon: L.divIcon({
+                className: '',
+                html: `<i class="fa-solid fa-location-dot map-marker map-marker-${statusClass}" aria-hidden="true"></i>`,
+                iconSize: [28, 36],
+                iconAnchor: [14, 36]
+            })
+        }).addTo(map);
+        shelterBounds.push([shelter.latitude, shelter.longitude]);
+        const tooltip = document.createElement('span');
+        tooltip.textContent = shelter.name;
+        marker.bindTooltip(tooltip, {
+            direction: 'top',
+            className: 'shelter-tooltip'
+        });
+        const popup = document.createElement('div');
+        const popupName = document.createElement('strong');
+        popupName.textContent = shelter.name;
+        popup.appendChild(popupName);
+        if (shelter.address) {
+            const popupAddress = document.createElement('div');
+            popupAddress.textContent = shelter.address;
+            popup.appendChild(popupAddress);
+        }
+        const popupStatus = document.createElement('div');
+        popupStatus.textContent = statusClass === 'open' ? '開設中' :
+            statusClass === 'closed' ? '未開設・閉鎖' : '状況未登録';
+        popup.appendChild(popupStatus);
+        marker.bindPopup(popup);
+
+        if (shelterList) {
+            const item = document.createElement('li');
+            const statusText = statusClass === 'open' ? '開設中' :
+                statusClass === 'closed' ? '未開設・閉鎖' : '状況未登録';
+            item.textContent = `${shelter.name}（${statusText}）`;
+            shelterList.appendChild(item);
+        }
+    });
+    if (shelterBounds.length > 0) {
+        map.fitBounds(shelterBounds, {padding: [24, 24], maxZoom: 14});
+    }
+
+    document.getElementById('showCurrentLocation').addEventListener('click', function() {
+        const mapMessage = document.getElementById('mapMessage');
+        if (!navigator.geolocation) {
+            mapMessage.textContent = 'このブラウザでは位置情報を利用できません。';
+            return;
+        }
+
+        mapMessage.textContent = '現在地を取得しています...';
+        navigator.geolocation.getCurrentPosition(function(position) {
+            const coordinates = [position.coords.latitude, position.coords.longitude];
+            map.setView(coordinates, 15);
+            L.marker(coordinates, {
+                icon: L.divIcon({
+                    className: '',
+                    html: '<i class="fa-solid fa-location-crosshairs map-marker map-marker-current" aria-hidden="true"></i>',
+                    iconSize: [28, 36],
+                    iconAnchor: [14, 36]
+                })
+            }).addTo(map).bindPopup('現在地').openPopup();
+            mapMessage.textContent = '現在地を表示しています。';
+        }, function(error) {
+            mapMessage.textContent = error.code === error.PERMISSION_DENIED
+                ? '位置情報の利用が許可されませんでした。'
+                : '現在地を取得できませんでした。';
+        });
+    });
+
     function updateWeatherWarnings() {
         fetch('/api/weather_warnings')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`気象情報APIの応答エラー: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
-                console.log('気象情報を更新しました:', data);
                 updateWeatherContent(data);
             })
             .catch(error => {
                 console.error('気象情報の更新に失敗しました:', error);
+                document.getElementById('weatherContent').innerHTML =
+                    '<p>気象情報の取得に失敗しました。</p>';
             });
     }
 
@@ -368,7 +644,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const weatherContent = document.getElementById('weatherContent');
 
         if (data.error) {
-            weatherContent.innerHTML = '<p>気象情報の取得に失敗しました</p>';
+            weatherContent.innerHTML = `
+                <p>気象情報の取得に失敗しました。</p>
+                <p class="weather-row weather-metadata"><i class="fa-regular fa-clock fa-fw" aria-hidden="true"></i><span>最終確認: ${data.last_fetch_time || '不明'}</span></p>
+            `;
             return;
         }
 
@@ -391,7 +670,6 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
-    // 初回表示＋10分（600,000ミリ秒）おきに自動更新
     updateWeatherWarnings();
     setInterval(updateWeatherWarnings, 600000);
 });

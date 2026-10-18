@@ -4,34 +4,170 @@
   <meta charset="utf-8">
   <title>{% block title %}防災アプリ{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
   <style>
-    h1 { color: blue; }
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding-top: 70px;
+      background: #f7f8fa;
+      color: #24364b;
+      font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    }
+
+    .site-header {
+      position: fixed;
+      z-index: 2000;
+      top: 0;
+      right: 0;
+      left: 0;
+      display: flex;
+      height: 70px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 max(24px, calc((100vw - 1380px) / 2));
+      background: #2856ad;
+      color: #fff;
+    }
+
+    .site-title {
+      margin: 0;
+      color: #fff;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .site-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .site-menu-button {
+      display: grid;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #fff;
+      cursor: pointer;
+      font-size: 26px;
+      line-height: 1;
+    }
+
+    .site-menu-button:hover,
+    .site-menu-button:focus-visible {
+      background: rgb(255 255 255 / 16%);
+    }
+
+    .site-menu {
+      position: fixed;
+      z-index: 2001;
+      top: 70px;
+      right: max(16px, calc((100vw - 1380px) / 2));
+      display: grid;
+      min-width: 240px;
+      padding: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 8px 24px rgb(29 50 79 / 16%);
+    }
+
+    .site-menu[hidden] {
+      display: none;
+    }
+
+    .site-menu a {
+      padding: 12px 14px;
+      border-radius: 4px;
+      color: #2856ad;
+      text-decoration: none;
+    }
+
+    .site-menu a:hover,
+    .site-menu a:focus-visible {
+      background: #eef4fc;
+    }
+
+    .site-menu a[aria-current="page"] {
+      background: #e7effc;
+      color: #1d438e;
+      font-weight: 700;
+    }
+
+    main {
+      max-width: 950px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    @media (max-width: 600px) {
+      .site-header {
+        padding-right: 12px;
+        padding-left: 18px;
+      }
+
+      .site-title {
+        font-size: 21px;
+      }
+
+      main {
+        padding: 20px 14px 36px;
+      }
+    }
   </style>
 </head>
 <body>
-  <!-- ヘッダー -->
-  <h1>防災アプリ</h1>
+  <header class="site-header">
+    <h1 class="site-title"><a href="/">防災アプリ</a></h1>
+    <button class="site-menu-button" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="site-menu" title="メニュー">
+      <i class="fa-solid fa-bars" aria-hidden="true"></i>
+    </button>
+  </header>
 
-  <!-- ナビゲーション -->
-  <nav>
-    <a href="/">ホーム</a> |
-    <a href="/shelter_search">避難所検索</a> |
-    <a href="/shelter_register">避難所登録</a> |
-    <a href="/board">指示・発信ボード</a>
-    ｜
+  {% set current_endpoint = request.endpoint %}
+  <nav class="site-menu" id="site-menu" aria-label="メインメニュー" hidden>
+    <a href="/" {% if current_endpoint == 'index' %}aria-current="page"{% endif %}>ホーム</a>
+    <a href="/shelter_search" {% if current_endpoint in ('shelter_search', 'all_shelters', 'search_results') %}aria-current="page"{% endif %}>避難所検索</a>
+    <a href="/shelter_register" {% if current_endpoint == 'shelter_register' %}aria-current="page"{% endif %}>避難所登録</a>
+    <a href="/board" {% if current_endpoint == 'board' %}aria-current="page"{% endif %}>指示・発信ボード</a>
     {% if session.logged_in %}
-      ログイン中{% if session.username %}（{{ session.username }}）{% endif %}
+      <span class="site-menu-account">ログイン中{% if session.username %}（{{ session.username }}）{% endif %}</span>
       <a href="/logout">ログアウト</a>
     {% else %}
-      未ログイン
-      <a href="/login">ログイン</a>
+      <a href="/login" {% if current_endpoint == 'login' %}aria-current="page"{% endif %}>ログイン</a>
     {% endif %}
   </nav>
-  <hr>
 
   <main>
-    <!-- ここに子テンプレートの content が入る -->
     {% block content %}{% endblock %}
   </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const menuButton = document.querySelector('.site-menu-button');
+      const menu = document.getElementById('site-menu');
+
+      menuButton.addEventListener('click', function() {
+        const isExpanded = menuButton.getAttribute('aria-expanded') === 'true';
+        menuButton.setAttribute('aria-expanded', String(!isExpanded));
+        menuButton.setAttribute('aria-label', isExpanded ? 'メニューを開く' : 'メニューを閉じる');
+        menu.hidden = isExpanded;
+      });
+
+      document.addEventListener('click', function(event) {
+        if (!menu.hidden && !menu.contains(event.target) && !menuButton.contains(event.target)) {
+          menu.hidden = true;
+          menuButton.setAttribute('aria-expanded', 'false');
+          menuButton.setAttribute('aria-label', 'メニューを開く');
+        }
+      });
+    });
+  </script>
 </body>
 </html>

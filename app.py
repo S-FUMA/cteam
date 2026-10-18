@@ -82,6 +82,7 @@ WARNING_CODES = {
 # サンプルデータの読み込み
 DATA_FILE = os.path.join(APP_DIR, 'data', 'shelters.json')
 INSTRUCTIONS_FILE = os.path.join(APP_DIR, 'data', 'instructions.json')
+NOTIFICATION_HISTORY_FILE = os.path.join(APP_DIR, 'data', 'notification_history.json')
 
 def load_json(path, default):
     """JSONファイルを読み込む（存在しない・壊れている場合は default を返す）"""
@@ -93,6 +94,105 @@ def load_json(path, default):
 
 shelters = load_json(DATA_FILE, [])
 instructions = load_json(INSTRUCTIONS_FILE, [])
+notification_history = load_json(NOTIFICATION_HISTORY_FILE, [])
+
+
+@app.before_request
+def refresh_shelters():
+    global shelters
+    shelters = load_json(DATA_FILE, [])
+
+
+def parse_japan_datetime(value):
+    """アプリのJSONデータで使われる日時形式を解析する"""
+    if not isinstance(value, str):
+        return datetime.min
+    try:
+        return datetime.strptime(value, "%Y年%m月%d日 %H:%M")
+    except ValueError:
+        return datetime.min
+
+
+def get_disaster_category(name):
+    if any(word in name for word in ("土砂", "大雨", "高潮")):
+        return "大雨・土砂災害"
+    if "洪水" in name:
+        return "洪水"
+    if any(word in name for word in ("暴風", "風雪", "強風")):
+        return "風・暴風雪"
+    if any(word in name for word in ("大雪", "着雪", "融雪", "なだれ")):
+        return "雪"
+    if "雷" in name:
+        return "雷"
+    return "その他の気象情報"
+
+
+def get_shelter_map_data():
+    map_shelters = []
+    for shelter in shelters:
+        if not isinstance(shelter, dict):
+            continue
+        latitude = shelter.get("latitude", shelter.get("lat"))
+        longitude = shelter.get("longitude", shelter.get("lng"))
+        if (
+            not isinstance(latitude, (int, float))
+            or isinstance(latitude, bool)
+            or not isinstance(longitude, (int, float))
+            or isinstance(longitude, bool)
+        ):
+            continue
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            continue
+
+        raw_status = shelter.get(
+            "opening_status",
+            shelter.get("open_status", shelter.get("is_open", shelter.get("status")))
+        )
+        if raw_status is True or raw_status in ("開設中", "開設"):
+            open_status = "open"
+        elif raw_status is False or raw_status in ("未開設", "未開設中", "閉鎖", "閉鎖中"):
+            open_status = "closed"
+        else:
+            open_status = "unknown"
+
+        map_shelters.append({
+            "name": shelter.get("name", "名称未設定"),
+            "address": shelter.get("address", ""),
+            "latitude": latitude,
+            "longitude": longitude,
+            "open_status": open_status,
+        })
+    return map_shelters
+
+
+def get_disaster_events():
+    events = []
+    for report in notification_history:
+        if not isinstance(report, dict):
+            continue
+        timestamp = report.get("timestamp", "")
+        warnings = report.get("warnings", [])
+        if not isinstance(warnings, list):
+            warnings = []
+        if not warnings:
+            events.append({
+                "category": "その他の気象情報",
+                "content": "警報・注意報の発表なし",
+                "timestamp": timestamp,
+                "sort_time": parse_japan_datetime(timestamp),
+            })
+            continue
+        for warning in warnings:
+            if not isinstance(warning, dict):
+                continue
+            name = str(warning.get("name", "気象情報"))
+            events.append({
+                "category": get_disaster_category(name),
+                "content": f"{name}（{warning.get('status', '状況不明')}）",
+                "timestamp": timestamp,
+                "sort_time": parse_japan_datetime(timestamp),
+            })
+    return sorted(events, key=lambda event: event["sort_time"], reverse=True)
 
 def save_instructions():
     """指示ボードのデータをファイルに保存する"""
@@ -241,8 +341,45 @@ def get_weather_warnings():
 # トップページ：templates/index.html を返す（住民向け指示も表示する）
 @app.route('/')
 def index():
-    resident_notices = [i for i in instructions if i.get('target') == '住民']
-    return render_template('index.html', resident_notices=resident_notices)
+    resident_notices = [
+        dict(instruction)
+        for instruction in instructions
+        if isinstance(instruction, dict) and instruction.get('target') == '住民'
+    ]
+    resident_notices.sort(
+        key=lambda instruction: parse_japan_datetime(
+            instruction.get('created_at') or instruction.get('updated_at', '')
+        ),
+        reverse=True
+    )
+    emergency_notices = [
+        instruction
+        for instruction in resident_notices
+        if instruction.get('status') not in ('解除', '完了', '対応済み', '完了済み')
+    ]
+    for instruction in resident_notices:
+        priority = str(instruction.get('priority', instruction.get('urgency', ''))).lower()
+        content = str(instruction.get('content', ''))
+        instruction['is_urgent'] = (
+            instruction.get('emergency') is True
+            or priority in ('high', 'critical', '緊急', '高')
+            or any(word in content for word in ('緊急', '危険', '避難'))
+        )
+    disaster_events = get_disaster_events()
+    disaster_types = sorted({event['category'] for event in disaster_events})
+    return render_template(
+        'index.html',
+        resident_notices=resident_notices,
+        emergency_notices=emergency_notices,
+        disaster_events=disaster_events,
+        disaster_types=disaster_types,
+        shelter_map_data=get_shelter_map_data(),
+        shelter_names=[
+            shelter.get('name', '名称未設定')
+            for shelter in shelters
+            if isinstance(shelter, dict)
+        ],
+    )
 
 # ログインページ
 @app.route('/login', methods=['GET', 'POST'])
@@ -295,8 +432,60 @@ def shelter_register():
                 message='避難所名を入力してください。'
             )
 
-        next_id = max((shelter.get('id', 0) for shelter in shelters), default=0) + 1
-        shelters.append({'id': next_id, 'name': name})
+        address = request.form.get('address', '').strip()
+        latitude_value = request.form.get('latitude', '').strip()
+        longitude_value = request.form.get('longitude', '').strip()
+        opening_status = request.form.get('opening_status', '状況未登録')
+        if bool(latitude_value) != bool(longitude_value):
+            return render_template(
+                'shelter_register.html',
+                error=True,
+                message='緯度と経度は両方入力してください。'
+            )
+
+        latitude = longitude = None
+        if latitude_value:
+            try:
+                latitude = float(latitude_value)
+                longitude = float(longitude_value)
+            except ValueError:
+                return render_template(
+                    'shelter_register.html',
+                    error=True,
+                    message='緯度と経度は数値で入力してください。'
+                )
+            if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+                return render_template(
+                    'shelter_register.html',
+                    error=True,
+                    message='緯度は-90〜90、経度は-180〜180の範囲で入力してください。'
+                )
+
+        if opening_status not in ('開設中', '未開設', '状況未登録'):
+            return render_template(
+                'shelter_register.html',
+                error=True,
+                message='開設状況を選択してください。'
+            )
+
+        next_id = max(
+            (
+                shelter.get('id', 0)
+                for shelter in shelters
+                if isinstance(shelter, dict)
+                and isinstance(shelter.get('id', 0), int)
+                and not isinstance(shelter.get('id', 0), bool)
+            ),
+            default=0
+        ) + 1
+        shelters.append({
+            'id': next_id,
+            'name': name,
+            'address': address,
+            'latitude': latitude,
+            'longitude': longitude,
+            'opening_status': opening_status,
+        })
         save_shelters()
         return render_template(
             'shelter_register.html',
