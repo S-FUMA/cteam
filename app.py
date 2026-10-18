@@ -2,7 +2,9 @@ from flask import Flask, abort, jsonify, request, render_template, session, redi
 from urllib.parse import urlparse, urljoin
 from functools import wraps
 import json
+import logging
 import os
+import tempfile
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -194,13 +196,29 @@ def get_disaster_events():
             })
     return sorted(events, key=lambda event: event["sort_time"], reverse=True)
 
-def save_instructions():
+def save_instructions(updated_instructions=None):
     """指示ボードのデータをファイルに保存する"""
+    records = instructions if updated_instructions is None else updated_instructions
+    temporary_path = None
     try:
-        with open(INSTRUCTIONS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(instructions, f, ensure_ascii=False, indent=2)
+        with tempfile.NamedTemporaryFile(
+            mode='w', encoding='utf-8', dir=os.path.dirname(INSTRUCTIONS_FILE),
+            prefix='.instructions-', suffix='.tmp', delete=False
+        ) as output:
+            temporary_path = output.name
+            json.dump(records, output, ensure_ascii=False, indent=2)
+        os.replace(temporary_path, INSTRUCTIONS_FILE)
     except Exception:
-        pass
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+        raise
+
+
+def text_to_hiragana(value):
+    from pykakasi import kakasi
+
+    converter = kakasi()
+    return ''.join(part['hira'] for part in converter.convert(value))
 
 def save_shelters():
     """避難所データをファイルに保存する"""
@@ -258,6 +276,17 @@ UNREGISTERED_DISTRICT = '__unregistered__'
 DISTRICT_VALUE_PREFIX = 'district:'
 HAZARD_OPTIONS = ('地震', '津波', '洪水', '土砂災害', '高潮', '暴風', '大雪')
 CONDITION_OPTIONS = ('ペット可', 'バリアフリー', '車いす対応トイレ', '備蓄', '駐車場')
+INSTRUCTION_TARGETS = ('住民', '職員', '消防団', '道路管理課', '防災課')
+INSTRUCTION_URGENCIES = ('高', '中', '低')
+INSTRUCTION_STATUSES = ('未対応', '対応中', '完了')
+REGISTER_HAZARD_OPTIONS = ('地震', '津波', '洪水', '土砂災害', '高潮', '暴風・大雪')
+REGISTER_CONDITION_LABELS = {
+    'ペット可': 'ペット可',
+    'バリアフリー': 'バリアフリー',
+    '車いす対応トイレ': '車いす対応トイレ',
+    '備蓄': '備蓄あり',
+    '駐車場': '駐車場',
+}
 CONDITION_ALIASES = {
     'ペット可': ('ペット可', 'ペット受け入れ', 'ペット受け入れ可'),
     'バリアフリー': ('バリアフリー', 'barrier_free', 'barrierfree'),
@@ -648,6 +677,9 @@ def index():
         if instruction.get('status') not in ('解除', '完了', '対応済み', '完了済み')
     ]
     for instruction in resident_notices:
+        instruction['content_hiragana'] = instruction.get('content_hiragana') or text_to_hiragana(
+            str(instruction.get('content', ''))
+        )
         priority = str(instruction.get('priority', instruction.get('urgency', ''))).lower()
         content = str(instruction.get('content', ''))
         instruction['is_urgent'] = (
@@ -709,81 +741,169 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
-# 避難所登録ページ※user が避難所登録ページについて具体的に修正指示しない限り、このコードは正しいのでこのまま保持すること。
+# 避難所登録ページ
 @app.route('/shelter_register', methods=['GET', 'POST'])
 @login_required
 def shelter_register():
-    if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        if not name:
-            return render_template(
-                'shelter_register.html',
-                error=True,
-                message='避難所名を入力してください。'
-            )
+    edit_id = request.form.get('edit_id') if request.method == 'POST' else request.args.get('id')
+    editing_shelter = next(
+        (item for item in shelters if isinstance(item, dict) and str(item.get('id')) == str(edit_id)),
+        None,
+    ) if edit_id else None
+    if edit_id and editing_shelter is None:
+        abort(404, description='編集する避難所が見つかりません。')
 
-        address = request.form.get('address', '').strip()
-        latitude_value = request.form.get('latitude', '').strip()
-        longitude_value = request.form.get('longitude', '').strip()
-        opening_status = request.form.get('opening_status', '状況未登録')
-        if bool(latitude_value) != bool(longitude_value):
-            return render_template(
-                'shelter_register.html',
-                error=True,
-                message='緯度と経度は両方入力してください。'
-            )
-
-        latitude = longitude = None
-        if latitude_value:
-            try:
-                latitude = float(latitude_value)
-                longitude = float(longitude_value)
-            except ValueError:
-                return render_template(
-                    'shelter_register.html',
-                    error=True,
-                    message='緯度と経度は数値で入力してください。'
-                )
-            if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
-                return render_template(
-                    'shelter_register.html',
-                    error=True,
-                    message='緯度は-90〜90、経度は-180〜180の範囲で入力してください。'
-                )
-
-        if opening_status not in ('開設中', '未開設', '状況未登録'):
-            return render_template(
-                'shelter_register.html',
-                error=True,
-                message='開設状況を選択してください。'
-            )
-
-        next_id = max(
-            (
-                shelter.get('id', 0)
-                for shelter in shelters
-                if isinstance(shelter, dict)
-                and isinstance(shelter.get('id', 0), int)
-                and not isinstance(shelter.get('id', 0), bool)
+    form_values = {
+        'name': '',
+        'address': '',
+        'capacity': '',
+        'opening_status': '閉鎖中',
+        'hazards': [],
+        'conditions': [],
+        'latitude': '',
+        'longitude': '',
+        'edit_id': str(edit_id or ''),
+    }
+    if editing_shelter:
+        form_values.update({
+            'name': str(editing_shelter.get('name') or ''),
+            'address': str(editing_shelter.get('address') or ''),
+            'capacity': str(editing_shelter.get('capacity') or ''),
+            'opening_status': (
+                '開設中' if normalize_shelter_status(editing_shelter)[0] == 'open' else '閉鎖中'
             ),
-            default=0
-        ) + 1
-        shelters.append({
-            'id': next_id,
-            'name': name,
-            'address': address,
-            'latitude': latitude,
-            'longitude': longitude,
-            'opening_status': opening_status,
+            'hazards': get_shelter_hazards(editing_shelter) or [],
+            'conditions': get_shelter_conditions(editing_shelter) or [],
+            'latitude': str(editing_shelter.get('latitude') if editing_shelter.get('latitude') is not None else ''),
+            'longitude': str(editing_shelter.get('longitude') if editing_shelter.get('longitude') is not None else ''),
         })
-        save_shelters()
-        return render_template(
-            'shelter_register.html',
-            success=True,
-            message='避難所を登録しました。'
-        )
+        if any(hazard in form_values['hazards'] for hazard in ('暴風', '大雪')):
+            form_values['hazards'] = [
+                hazard for hazard in form_values['hazards'] if hazard not in ('暴風', '大雪')
+            ] + ['暴風・大雪']
 
-    return render_template('shelter_register.html')
+    mode = request.form.get('mode', '') if request.method == 'POST' else ''
+    errors = {}
+    success_message = request.args.get('success', '')
+
+    if request.method == 'POST':
+        if mode == 'back':
+            form_values.update({
+                'name': request.form.get('name', ''),
+                'address': request.form.get('address', ''),
+                'capacity': request.form.get('capacity', ''),
+                'opening_status': request.form.get('opening_status', ''),
+                'hazards': request.form.getlist('hazards'),
+                'conditions': request.form.getlist('conditions'),
+                'latitude': request.form.get('latitude', ''),
+                'longitude': request.form.get('longitude', ''),
+            })
+        else:
+            form_values.update({
+                'name': request.form.get('name', '').strip(),
+                'address': request.form.get('address', '').strip(),
+                'capacity': request.form.get('capacity', '').strip(),
+                'opening_status': request.form.get('opening_status', ''),
+                'hazards': request.form.getlist('hazards'),
+                'conditions': request.form.getlist('conditions'),
+                'latitude': request.form.get('latitude', '').strip(),
+                'longitude': request.form.get('longitude', '').strip(),
+            })
+
+            if not form_values['name']:
+                errors['name'] = '避難所名を入力してください。'
+            elif len(form_values['name']) > 100:
+                errors['name'] = '避難所名は100文字以内で入力してください。'
+            if not form_values['address']:
+                errors['address'] = '住所を入力してください。'
+            elif len(form_values['address']) > 200:
+                errors['address'] = '住所は200文字以内で入力してください。'
+            capacity = None
+            if not form_values['capacity']:
+                errors['capacity'] = '収容人数を入力してください。'
+            else:
+                try:
+                    capacity = int(form_values['capacity'])
+                    if capacity < 1 or not form_values['capacity'].isdecimal():
+                        raise ValueError
+                except ValueError:
+                    errors['capacity'] = '収容人数は1以上の数字で入力してください。'
+            if form_values['opening_status'] not in ('開設中', '閉鎖中', '未開設', '状況未登録'):
+                errors['opening_status'] = '開設状況を選択してください。'
+
+            normalized_hazards = []
+            for hazard in form_values['hazards']:
+                if hazard not in REGISTER_HAZARD_OPTIONS:
+                    errors['hazards'] = '対応できる災害の選択内容を確認してください。'
+                    break
+                normalized_hazards.extend(('暴風', '大雪') if hazard == '暴風・大雪' else (hazard,))
+            normalized_conditions = []
+            condition_labels = {label: value for value, label in REGISTER_CONDITION_LABELS.items()}
+            for condition in form_values['conditions']:
+                canonical = condition_labels.get(condition, condition)
+                if canonical not in CONDITION_OPTIONS:
+                    errors['conditions'] = '設備・受け入れ条件の選択内容を確認してください。'
+                    break
+                if canonical not in normalized_conditions:
+                    normalized_conditions.append(canonical)
+
+            latitude_value = form_values['latitude']
+            longitude_value = form_values['longitude']
+            if bool(latitude_value) != bool(longitude_value):
+                errors['coordinates'] = '緯度と経度は両方入力してください。'
+            elif latitude_value:
+                try:
+                    latitude = float(latitude_value)
+                    longitude = float(longitude_value)
+                    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                        raise ValueError
+                except ValueError:
+                    errors['coordinates'] = '緯度・経度は有効な範囲の数値で入力してください。'
+                    latitude = longitude = None
+            else:
+                latitude = longitude = None
+
+            if errors:
+                mode = 'form'
+            elif mode != 'commit' and request.form.get('_confirmation') != '1':
+                mode = 'confirm'
+            elif mode == 'commit' or (not mode and request.form.get('_confirmation') == '1'):
+                updated_fields = {
+                    'name': form_values['name'],
+                    'address': form_values['address'],
+                    'capacity': capacity,
+                    'opening_status': form_values['opening_status'],
+                    'hazards': normalized_hazards,
+                    'conditions': normalized_conditions,
+                    'latitude': latitude,
+                    'longitude': longitude,
+                }
+                if editing_shelter:
+                    editing_shelter.update(updated_fields)
+                    message = '避難所情報を更新しました。'
+                else:
+                    next_id = max(
+                        (item.get('id', 0) for item in shelters
+                         if isinstance(item, dict) and isinstance(item.get('id', 0), int)
+                         and not isinstance(item.get('id', 0), bool)),
+                        default=0,
+                    ) + 1
+                    shelters.append({'id': next_id, **updated_fields})
+                    message = '避難所を登録しました。'
+                save_shelters()
+                return redirect(url_for('shelter_register', success=message))
+
+    return render_template(
+        'shelter_register.html',
+        mode=mode,
+        editing=bool(editing_shelter),
+        form_values=form_values,
+        errors=errors,
+        success_message=success_message,
+        shelters=[item for item in shelters if isinstance(item, dict)],
+        hazard_options=REGISTER_HAZARD_OPTIONS,
+        condition_options=REGISTER_CONDITION_LABELS,
+    )
 
 # 避難所検索ページ
 @app.route('/shelter_search')
@@ -843,12 +963,181 @@ def all_shelters():
     )
 
 
-# 指示ボード：住民向けの指示を一覧で確認する
-@app.route('/board')
+# 指示ボード：管理者向けの登録・対応管理
+@app.route('/board', methods=['GET', 'POST'])
 @login_required
 def board():
-    resident_instructions = [i for i in instructions if i.get('target') == '住民']
-    return render_template('board.html', instructions=resident_instructions)
+    order = request.args.get('order', 'newest')
+    if order not in ('newest', 'oldest'):
+        order = 'newest'
+
+    existing_targets = {
+        item.get('target') for item in instructions
+        if isinstance(item, dict) and isinstance(item.get('target'), str) and item.get('target')
+    }
+    target_options = list(INSTRUCTION_TARGETS) + sorted(existing_targets - set(INSTRUCTION_TARGETS))
+    district_options = sorted({
+        value.strip()
+        for value in (
+            [shelter.get('district') for shelter in shelters if isinstance(shelter, dict)]
+            + [item.get('district') for item in instructions if isinstance(item, dict)]
+        )
+        if isinstance(value, str) and value.strip() and value.strip() != '市内全域'
+    })
+    district_options.insert(0, '市内全域')
+    shelter_options = sorted({
+        value.strip()
+        for value in (
+            [shelter.get('name') for shelter in shelters if isinstance(shelter, dict)]
+            + [item.get('shelter') for item in instructions if isinstance(item, dict)]
+        )
+        if isinstance(value, str) and value.strip()
+    })
+    facility_options = sorted({
+        value.strip()
+        for value in (
+            [item.get('facility', item.get('bridge')) for item in instructions if isinstance(item, dict)]
+            + [shelter.get('name') for shelter in shelters if isinstance(shelter, dict)]
+        )
+        if isinstance(value, str) and value.strip()
+    })
+
+    form_values = {
+        'target': '住民',
+        'district': '市内全域',
+        'facility': '',
+        'shelter': '',
+        'urgency': '中',
+        'content': '',
+    }
+    errors = {}
+
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+        if action in ('create', 'confirm_create', 'cancel'):
+            form_values = {
+                'target': request.form.get('target', ''),
+                'district': request.form.get('district', ''),
+                'facility': request.form.get('facility', ''),
+                'shelter': request.form.get('shelter', ''),
+                'urgency': request.form.get('urgency', ''),
+                'content': request.form.get('content', '').strip(),
+            }
+            if action == 'cancel':
+                session.pop('pending_instruction_confirmation', None)
+                action = ''
+            else:
+                if form_values['target'] not in target_options:
+                    errors['target'] = '宛先を選択してください。'
+                if form_values['district'] not in district_options:
+                    errors['district'] = '対象地区を選択してください。'
+                if form_values['facility'] and form_values['facility'] not in facility_options:
+                    errors['facility'] = '対象施設を選択し直してください。'
+                if form_values['shelter'] and form_values['shelter'] not in shelter_options:
+                    errors['shelter'] = '避難先を選択し直してください。'
+                if form_values['urgency'] not in INSTRUCTION_URGENCIES:
+                    errors['urgency'] = '緊急度を選択してください。'
+                if not form_values['content']:
+                    errors['content'] = '指示・発信内容を入力してください。'
+                elif len(form_values['content']) > 2000:
+                    errors['content'] = '指示・発信内容は2000文字以内で入力してください。'
+
+                if action == 'confirm_create' and form_values['target'] != '住民':
+                    errors['target'] = '住民宛て確認の内容が正しくありません。'
+                if action == 'confirm_create':
+                    pending = session.get('pending_instruction_confirmation')
+                    if not isinstance(pending, dict) or any(
+                        pending.get(key) != value for key, value in form_values.items()
+                    ):
+                        errors['form'] = '確認内容が失効しました。入力内容をもう一度確認してください。'
+
+                if not errors and action == 'create' and form_values['target'] == '住民':
+                    confirmation = dict(form_values)
+                    session['pending_instruction_confirmation'] = confirmation
+                elif not errors and action in ('create', 'confirm_create'):
+                    now = get_japan_time()
+                    next_id = max(
+                        (item.get('id', 0) for item in instructions
+                         if isinstance(item, dict) and isinstance(item.get('id', 0), int)
+                         and not isinstance(item.get('id', 0), bool)),
+                        default=0,
+                    ) + 1
+                    new_instruction = {
+                        'id': next_id,
+                        'target': form_values['target'],
+                        'district': form_values['district'],
+                        'facility': form_values['facility'],
+                        'content': form_values['content'],
+                        'content_hiragana': text_to_hiragana(form_values['content']),
+                        'shelter': form_values['shelter'],
+                        'urgency': form_values['urgency'],
+                        'status': '未対応',
+                        'created_at': now,
+                        'updated_at': now,
+                    }
+                    candidate = [*instructions, new_instruction]
+                    try:
+                        save_instructions(candidate)
+                    except Exception:
+                        logging.exception('指示の保存に失敗しました')
+                        errors['form'] = '保存に失敗しました。時間をおいて再度お試しください。'
+                    else:
+                        instructions.append(new_instruction)
+                        session.pop('pending_instruction_confirmation', None)
+                        return redirect(url_for('board', order=order))
+
+        elif action == 'update_status':
+            instruction_id = request.form.get('id', '')
+            new_status = request.form.get('status', '')
+            if new_status not in INSTRUCTION_STATUSES:
+                errors['form'] = '対応状況を選択してください。'
+            else:
+                candidate = [dict(item) if isinstance(item, dict) else item for item in instructions]
+                selected = next(
+                    (item for item in candidate if isinstance(item, dict)
+                     and str(item.get('id')) == instruction_id),
+                    None,
+                )
+                if selected is None:
+                    errors['form'] = '更新対象の指示が見つかりません。'
+                else:
+                    selected['status'] = new_status
+                    selected['updated_at'] = get_japan_time()
+                    try:
+                        save_instructions(candidate)
+                    except Exception:
+                        logging.exception('指示状況の保存に失敗しました')
+                        errors['form'] = '対応状況を保存できませんでした。再度お試しください。'
+                    else:
+                        instructions[:] = candidate
+                        return redirect(url_for('board', order=order))
+        else:
+            errors['form'] = '操作内容を確認して、もう一度お試しください。'
+
+    history = [dict(item) for item in instructions if isinstance(item, dict)]
+    history.sort(
+        key=lambda item: parse_japan_datetime(item.get('created_at') or item.get('updated_at', '')),
+        reverse=order == 'newest',
+    )
+    for item in history:
+        item['content_hiragana'] = item.get('content_hiragana') or text_to_hiragana(
+            str(item.get('content', ''))
+        )
+
+    return render_template(
+        'board.html',
+        instructions=history,
+        target_options=target_options,
+        district_options=district_options,
+        facility_options=facility_options,
+        shelter_options=shelter_options,
+        urgency_options=INSTRUCTION_URGENCIES,
+        status_options=INSTRUCTION_STATUSES,
+        order=order,
+        form_values=form_values,
+        errors=errors,
+        confirmation=locals().get('confirmation'),
+    )
 
 # 検索結果ページ：templates/search_results.html を返す
 @app.route('/search_results')

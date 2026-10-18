@@ -66,6 +66,50 @@
         font-weight: 700;
     }
 
+    .home-resident-tools {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 14px;
+    }
+
+    .home-resident-tools button {
+        min-height: 38px;
+        padding: 7px 11px;
+        border: 1px solid #b8c6d8;
+        border-radius: 5px;
+        background: #fff;
+        color: #2856ad;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+    }
+
+    .home-resident-tools button[aria-pressed="true"] {
+        border-color: #2856ad;
+        background: #eaf1fc;
+    }
+
+    .home-resident-tools button:focus-visible {
+        outline: 3px solid #73a8ed;
+        outline-offset: 2px;
+    }
+
+    .home-resident-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px 12px;
+        margin-top: 7px;
+        color: #64748b;
+        font-size: 13px;
+    }
+
+    .home-page.resident-large-text .resident-message {
+        font-size: 1.2em;
+        line-height: 1.7;
+    }
+
     .home-detail-link {
         display: inline-block;
         margin-top: 14px;
@@ -410,11 +454,20 @@
 <div class="home-page">
     <section class="home-panel emergency-panel" aria-labelledby="emergency-title">
         <h2 id="emergency-title"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> 緊急のお知らせ</h2>
+        <div class="home-resident-tools" aria-label="住民向け表示設定">
+            <button type="button" id="toggleEasyJapanese" aria-pressed="false">やさしい日本語で表示</button>
+            <button type="button" id="toggleResidentTextSize" aria-pressed="false">文字を大きく表示</button>
+        </div>
         {% if emergency_notices %}
             {% for notice in emergency_notices %}
                 <div class="emergency-notice{% if notice.is_urgent %} urgent-notice{% endif %}">
                     <div>
-                        <p>{{ notice.content }}{% if notice.shelter %}（避難先: {{ notice.shelter }}）{% endif %}</p>
+                        <p><span class="resident-message" data-original="{{ notice.content }}" data-hiragana="{{ notice.content_hiragana }}">{{ notice.content }}</span>{% if notice.shelter %}（避難先: {{ notice.shelter }}）{% endif %}</p>
+                        <div class="home-resident-meta">
+                            {% if notice.urgency or notice.priority %}<span>緊急度: {{ notice.urgency or notice.priority }}</span>{% endif %}
+                            {% if notice.district %}<span>対象地区: {{ notice.district }}</span>{% endif %}
+                            {% if notice.facility %}<span>対象施設: {{ notice.facility }}</span>{% endif %}
+                        </div>
                         <small>{{ notice.created_at or '受信日時不明' }}</small>
                     </div>
                     {% if notice.status %}<strong>{{ notice.status }}</strong>{% endif %}
@@ -511,7 +564,14 @@
                 {% for notice in resident_notices %}
                     <li class="instruction-item{% if notice.is_urgent and notice.status not in ('解除', '完了', '対応済み', '完了済み') %} urgent{% endif %}">
                         <span class="instruction-time">{{ notice.created_at or '受信日時不明' }}</span>
-                        <span class="instruction-content">{{ notice.content }}{% if notice.shelter %}（避難先: {{ notice.shelter }}）{% endif %}</span>
+                        <span class="instruction-content"><span class="resident-message" data-original="{{ notice.content }}" data-hiragana="{{ notice.content_hiragana }}">{{ notice.content }}</span>{% if notice.shelter %}（避難先: {{ notice.shelter }}）{% endif %}</span>
+                        {% if notice.urgency or notice.district or notice.facility %}
+                            <span class="home-resident-meta">
+                                {% if notice.urgency %}<span>緊急度: {{ notice.urgency }}</span>{% endif %}
+                                {% if notice.district %}<span>対象地区: {{ notice.district }}</span>{% endif %}
+                                {% if notice.facility %}<span>対象施設: {{ notice.facility }}</span>{% endif %}
+                            </span>
+                        {% endif %}
                         {% if notice.status %}<span class="instruction-status">状況: {{ notice.status }}</span>{% endif %}
                     </li>
                 {% endfor %}
@@ -528,6 +588,28 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const homePage = document.querySelector('.home-page');
+    const easyJapaneseButton = document.getElementById('toggleEasyJapanese');
+    const residentTextSizeButton = document.getElementById('toggleResidentTextSize');
+    if (easyJapaneseButton) {
+        easyJapaneseButton.addEventListener('click', function() {
+            const enabled = easyJapaneseButton.getAttribute('aria-pressed') !== 'true';
+            easyJapaneseButton.setAttribute('aria-pressed', String(enabled));
+            document.querySelectorAll('.resident-message').forEach(function(message) {
+                message.textContent = enabled
+                    ? (message.dataset.hiragana || message.dataset.original)
+                    : message.dataset.original;
+            });
+        });
+    }
+    if (residentTextSizeButton && homePage) {
+        residentTextSizeButton.addEventListener('click', function() {
+            const enabled = residentTextSizeButton.getAttribute('aria-pressed') !== 'true';
+            residentTextSizeButton.setAttribute('aria-pressed', String(enabled));
+            homePage.classList.toggle('resident-large-text', enabled);
+        });
+    }
+
     const disasterTypeFilter = document.getElementById('disasterTypeFilter');
     if (disasterTypeFilter) {
         disasterTypeFilter.addEventListener('change', function() {

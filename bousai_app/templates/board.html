@@ -3,23 +3,194 @@
 {% block title %}指示・発信ボード - 防災アプリ{% endblock %}
 
 {% block content %}
-<h2>発信ボード</h2>
-<p>住民向けの発信を登録・確認できます。</p>
+<style>
+  .board-page { display: grid; gap: 20px; }
+  .board-heading { margin: 0 0 6px; color: #1f477e; font-size: 27px; }
+  .board-intro { margin: 0; color: #586a7f; line-height: 1.6; }
+  .board-card { min-width: 0; padding: 24px; border: 1px solid #e0e6ee; border-radius: 8px; background: #fff; box-shadow: 0 3px 12px rgb(29 50 79 / 5%); }
+  .board-card h3 { margin: 0 0 16px; color: #24364b; font-size: 20px; }
+  .board-alert { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #dfa8a8; border-radius: 5px; background: #fff4f3; color: #8e2929; }
+  .board-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; }
+  .board-field { min-width: 0; }
+  .board-field--wide { grid-column: 1 / -1; }
+  .board-label { display: block; margin-bottom: 6px; color: #293d54; font-weight: 700; }
+  .board-control { width: 100%; min-height: 43px; padding: 9px 11px; border: 1px solid #bdc9d7; border-radius: 5px; background: #fff; color: #24364b; font: inherit; }
+  .board-control:focus-visible, .board-button:focus-visible, .board-link:focus-visible { outline: 3px solid #73a8ed; outline-offset: 2px; }
+  .board-textarea { min-height: 132px; resize: vertical; }
+  .board-error { display: block; margin-top: 5px; color: #922c2c; font-size: 14px; }
+  .board-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+  .board-button { min-height: 42px; padding: 9px 16px; border: 1px solid #2856ad; border-radius: 5px; background: #2856ad; color: #fff; cursor: pointer; font: inherit; font-weight: 700; }
+  .board-button:hover { background: #1f478e; }
+  .board-button--quiet { border-color: #a7b3c2; background: #fff; color: #34485f; }
+  .board-button--quiet:hover { background: #f1f4f8; }
+  .board-history-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+  .board-history-toolbar form { display: flex; align-items: end; gap: 8px; }
+  .board-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+  .board-item { min-width: 0; padding: 17px; border: 1px solid #e0e6ee; border-radius: 6px; background: #fbfcfe; }
+  .board-item-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+  .board-item-title { margin: 0; color: #263e5b; font-size: 17px; }
+  .board-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .board-tag { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #edf2f8; color: #41556d; font-size: 13px; }
+  .board-tag--high { background: #fff0f0; color: #a12323; font-weight: 700; }
+  .board-copy { margin: 14px 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .board-kana { margin: 8px 0; color: #52647a; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .board-dates { display: flex; flex-wrap: wrap; gap: 6px 16px; color: #65758a; font-size: 13px; }
+  .board-status-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 14px; }
+  .board-status-form .board-control { width: auto; min-width: 130px; }
+  .board-confirmation { border-color: #c9d8ec; }
+  .board-confirmation-list { display: grid; grid-template-columns: minmax(120px, .35fr) 1fr; gap: 9px 16px; margin: 16px 0; }
+  .board-confirmation-list dt { color: #52647a; font-weight: 700; }
+  .board-confirmation-list dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .board-link { color: #2856ad; text-underline-offset: 3px; }
+  @media (max-width: 620px) {
+    .board-heading { font-size: 23px; }
+    .board-card { padding: 18px 15px; }
+    .board-grid { grid-template-columns: minmax(0, 1fr); }
+    .board-field--wide { grid-column: auto; }
+    .board-history-toolbar, .board-item-header { align-items: flex-start; flex-direction: column; }
+    .board-history-toolbar form { width: 100%; }
+    .board-confirmation-list { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    .board-confirmation-list dd { margin-bottom: 9px; }
+  }
+</style>
 
-<!-- 発信一覧 -->
-<h3>発信一覧</h3>
-{% if instructions %}
-<table border="1" cellpadding="5">
-  <tr>
-    <th>内容</th>
-  </tr>
-  {% for inst in instructions %}
-  <tr>
-    <td>{{ inst.content }}{% if inst.shelter %}（避難先: {{ inst.shelter }}）{% endif %}</td>
-  </tr>
-  {% endfor %}
-</table>
-{% else %}
-<p>登録されている指示はありません。</p>
-{% endif %}
+<div class="board-page">
+  <header>
+    <h2 class="board-heading">指示・発信ボード</h2>
+    <p class="board-intro">宛先ごとの指示を登録し、対応状況を管理します。</p>
+  </header>
+
+  {% if errors %}
+    <div class="board-alert" role="alert" aria-live="assertive">
+      <strong>入力内容を確認してください。</strong>
+      {% for error in errors.values() %}<div>{{ error }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  {% if confirmation %}
+    <section class="board-card board-confirmation" aria-labelledby="board-confirm-title">
+      <h3 id="board-confirm-title">住民向け発信の確認</h3>
+      <p>次の内容を住民向け画面に表示します。内容を確認して登録してください。</p>
+      <dl class="board-confirmation-list">
+        <dt>対象地区</dt><dd>{{ confirmation.district }}</dd>
+        <dt>対象施設</dt><dd>{{ confirmation.facility or '指定なし' }}</dd>
+        <dt>避難先</dt><dd>{{ confirmation.shelter or '指定なし' }}</dd>
+        <dt>緊急度</dt><dd>{{ confirmation.urgency }}</dd>
+        <dt>本文</dt><dd>{{ confirmation.content }}</dd>
+      </dl>
+      <form method="post" class="board-actions">
+        {% for key in ('target', 'district', 'facility', 'shelter', 'urgency', 'content') %}
+          <input type="hidden" name="{{ key }}" value="{{ confirmation[key] }}">
+        {% endfor %}
+        <button class="board-button" type="submit" name="action" value="confirm_create">この内容で登録</button>
+        <button class="board-button board-button--quiet" type="submit" name="action" value="cancel" formnovalidate>キャンセルして修正</button>
+      </form>
+    </section>
+  {% else %}
+    <section class="board-card" aria-labelledby="board-form-title">
+      <h3 id="board-form-title">指示・発信を登録</h3>
+      <form method="post">
+        <div class="board-grid">
+          <div class="board-field">
+            <label class="board-label" for="board-target">宛先</label>
+            <select class="board-control" id="board-target" name="target" required {% if errors.target %}aria-invalid="true" aria-describedby="board-target-error"{% endif %}>
+              {% for option in target_options %}<option value="{{ option }}" {% if form_values.target == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+            </select>
+            {% if errors.target %}<span class="board-error" id="board-target-error">{{ errors.target }}</span>{% endif %}
+          </div>
+          <div class="board-field">
+            <label class="board-label" for="board-district">対象地区</label>
+            <select class="board-control" id="board-district" name="district" required {% if errors.district %}aria-invalid="true" aria-describedby="board-district-error"{% endif %}>
+              {% for option in district_options %}<option value="{{ option }}" {% if form_values.district == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+            </select>
+            {% if errors.district %}<span class="board-error" id="board-district-error">{{ errors.district }}</span>{% endif %}
+          </div>
+          <div class="board-field">
+            <label class="board-label" for="board-facility">対象施設（任意）</label>
+            <select class="board-control" id="board-facility" name="facility" {% if errors.facility %}aria-invalid="true" aria-describedby="board-facility-error"{% endif %}>
+              <option value="">指定なし</option>
+              {% for option in facility_options %}<option value="{{ option }}" {% if form_values.facility == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+            </select>
+            {% if errors.facility %}<span class="board-error" id="board-facility-error">{{ errors.facility }}</span>{% endif %}
+          </div>
+          <div class="board-field">
+            <label class="board-label" for="board-shelter">避難先（任意）</label>
+            <select class="board-control" id="board-shelter" name="shelter" {% if errors.shelter %}aria-invalid="true" aria-describedby="board-shelter-error"{% endif %}>
+              <option value="">指定なし</option>
+              {% for option in shelter_options %}<option value="{{ option }}" {% if form_values.shelter == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+            </select>
+            {% if errors.shelter %}<span class="board-error" id="board-shelter-error">{{ errors.shelter }}</span>{% endif %}
+          </div>
+          <div class="board-field">
+            <label class="board-label" for="board-urgency">緊急度</label>
+            <select class="board-control" id="board-urgency" name="urgency" required {% if errors.urgency %}aria-invalid="true" aria-describedby="board-urgency-error"{% endif %}>
+              {% for option in urgency_options %}<option value="{{ option }}" {% if form_values.urgency == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+            </select>
+            {% if errors.urgency %}<span class="board-error" id="board-urgency-error">{{ errors.urgency }}</span>{% endif %}
+          </div>
+          <div class="board-field board-field--wide">
+            <label class="board-label" for="board-content">指示・発信内容（必須、2000文字以内）</label>
+            <textarea class="board-control board-textarea" id="board-content" name="content" maxlength="2000" required {% if errors.content %}aria-invalid="true" aria-describedby="board-content-error"{% endif %}>{{ form_values.content }}</textarea>
+            {% if errors.content %}<span class="board-error" id="board-content-error">{{ errors.content }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="board-actions">
+          <button class="board-button" type="submit" name="action" value="create">入力内容を登録</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+
+  <section class="board-card" aria-labelledby="board-history-title">
+    <div class="board-history-toolbar">
+      <h3 id="board-history-title">指示・発信履歴</h3>
+      <form method="get" action="{{ url_for('board') }}">
+        <label class="board-label" for="board-order">並び順</label>
+        <select class="board-control" id="board-order" name="order">
+          <option value="newest" {% if order == 'newest' %}selected{% endif %}>新しい順</option>
+          <option value="oldest" {% if order == 'oldest' %}selected{% endif %}>古い順</option>
+        </select>
+        <button class="board-button board-button--quiet" type="submit">表示</button>
+      </form>
+    </div>
+    {% if instructions %}
+      <ul class="board-list">
+        {% for inst in instructions %}
+          <li class="board-item">
+            <div class="board-item-header">
+              <div>
+                <h4 class="board-item-title">{{ inst.target or '宛先未登録' }}{% if inst.district %} / {{ inst.district }}{% endif %}</h4>
+                <div class="board-tags">
+                  <span class="board-tag{% if inst.urgency in ('高', 'high', 'critical') %} board-tag--high{% endif %}">緊急度: {{ inst.urgency or '未登録' }}</span>
+                  <span class="board-tag">状況: {{ inst.status or '未対応' }}</span>
+                </div>
+              </div>
+            </div>
+            <p class="board-copy">{{ inst.content }}</p>
+            {% if inst.content_hiragana %}<p class="board-kana"><strong>ひらがな:</strong> {{ inst.content_hiragana }}</p>{% endif %}
+            <div class="board-tags">
+              {% if inst.facility %}<span class="board-tag">対象施設: {{ inst.facility }}</span>{% endif %}
+              {% if inst.shelter %}<span class="board-tag">避難先: {{ inst.shelter }}</span>{% endif %}
+            </div>
+            <div class="board-dates">
+              <span>登録: {{ inst.created_at or '日時不明' }}</span>
+              <span>更新: {{ inst.updated_at or '日時不明' }}</span>
+            </div>
+            <form class="board-status-form" method="post">
+              <input type="hidden" name="id" value="{{ inst.id }}">
+              <label class="board-label" for="board-status-{{ inst.id }}">対応状況</label>
+              <select class="board-control" id="board-status-{{ inst.id }}" name="status">
+                {% if inst.status and inst.status not in status_options %}<option value="" selected disabled>既存状態: {{ inst.status }}（選択し直してください）</option>{% endif %}
+                {% for option in status_options %}<option value="{{ option }}" {% if inst.status == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+              </select>
+              <button class="board-button board-button--quiet" type="submit" name="action" value="update_status">状況を更新</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="board-intro">登録されている指示・発信はありません。</p>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

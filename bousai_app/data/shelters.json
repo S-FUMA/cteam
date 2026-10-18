@@ -1,5 +1,5 @@
 [
-    {
+  {
     "id": 1,
     "name": "大阪市立上福島小学校",
     "address": "住所",
@@ -34,5 +34,36 @@
     "pets_allowed": true,
     "wheelchair_toilet": true,
     "barrier_free": true
+  },
+  {
+    "id": 4,
+    "name": "青森",
+    "address": "青森県青森市",
+    "capacity": 45,
+    "opening_status": "開設中",
+    "hazards": [
+      "洪水"
+    ],
+    "conditions": [
+      "バリアフリー"
+    ],
+    "latitude": 34.69730231414616,
+    "longitude": 118.697302314146
+  },
+  {
+    "id": 5,
+    "name": "山田",
+    "address": "大阪",
+    "capacity": 980,
+    "opening_status": "閉鎖中",
+    "hazards": [
+      "地震",
+      "津波"
+    ],
+    "conditions": [
+      "ペット可"
+    ],
+    "latitude": 34.69730231414616,
+    "longitude": 124.69730231414616
   }
 ]
