@@ -1,23 +1,299 @@
 {% extends "base.html" %}
 
-{% block content %}
-<!-- 避難所マップ -->
-<h2>避難所マップ</h2>
-<div id="shelterMap" style="height: 300px;"></div>
+{% block title %}防災アプリ{% endblock %}
 
-<!-- 気象警報・注意報 -->
-<h2>青森市 気象警報・注意報</h2>
-<p>10分おきに自動更新されます。</p>
-<div id="weatherContent">
-  <p>読み込み中...</p>
+{% block content %}
+<style>
+    body:has(.home-page) {
+        margin: 0;
+        padding-top: 70px;
+        background: #f7f8fa;
+        color: #24364b;
+        font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    }
+
+    body:has(.home-page)::before {
+        position: fixed;
+        z-index: 2000;
+        top: 0;
+        right: 0;
+        left: 0;
+        height: 70px;
+        background: #2856ad;
+        content: "";
+    }
+
+    body:has(.home-page) > h1 {
+        position: fixed;
+        z-index: 2001;
+        top: 0;
+        left: max(24px, calc((100vw - 1380px) / 2));
+        display: flex;
+        align-items: center;
+        height: 70px;
+        margin: 0;
+        color: #fff;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    body:has(.home-page) > nav,
+    body:has(.home-page) > hr {
+        display: none;
+    }
+
+    body:has(.home-page) > main {
+        max-width: 950px;
+        margin: 0 auto;
+        padding: 32px 20px 56px;
+    }
+
+    .home-menu-button {
+        position: fixed;
+        z-index: 2002;
+        top: 11px;
+        right: max(24px, calc((100vw - 1380px) / 2));
+        display: grid;
+        width: 48px;
+        height: 48px;
+        place-items: center;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: #fff;
+        cursor: pointer;
+        font-size: 26px;
+        line-height: 1;
+    }
+
+    .home-menu-button:hover,
+    .home-menu-button:focus-visible {
+        background: rgb(255 255 255 / 16%);
+    }
+
+    .home-menu-panel {
+        position: fixed;
+        z-index: 2003;
+        top: 70px;
+        right: max(16px, calc((100vw - 1380px) / 2));
+        display: grid;
+        min-width: 220px;
+        padding: 8px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgb(29 50 79 / 16%);
+    }
+
+    .home-menu-panel[hidden] {
+        display: none;
+    }
+
+    .home-menu-panel a {
+        padding: 12px 14px;
+        border-radius: 4px;
+        color: #2856ad;
+        text-decoration: none;
+    }
+
+    .home-menu-panel a:hover,
+    .home-menu-panel a:focus-visible {
+        background: #eef4fc;
+    }
+
+    .home-page {
+        display: grid;
+        gap: 36px;
+    }
+
+    .home-panel {
+        min-width: 0;
+        padding: 28px;
+        border: 1px solid #edf0f4;
+        border-radius: 15px;
+        background: #fff;
+        box-shadow: 0 5px 18px rgb(42 66 96 / 6%);
+    }
+
+    .home-panel h2 {
+        margin: 0 0 20px;
+        color: #2856ad;
+        font-size: 22px;
+        font-weight: 700;
+    }
+
+    #shelterMap {
+        position: relative;
+        z-index: 0;
+        height: 365px;
+        border-radius: 10px;
+        background: #b4dce4;
+    }
+
+    .weather-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    }
+
+    .weather-heading h2 {
+        margin-bottom: 20px;
+    }
+
+    .weather-refresh-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding-bottom: 20px;
+        color: #218b4b;
+        font-size: 16px;
+        white-space: nowrap;
+    }
+
+    .weather-refresh-icon {
+        font-size: 21px;
+        font-weight: 700;
+    }
+
+    #weatherContent {
+        min-height: 118px;
+        padding: 14px 18px;
+        border-radius: 9px;
+        background: #f3f5f7;
+    }
+
+    #weatherContent p {
+        margin: 8px 0;
+    }
+
+    #weatherContent p:first-child {
+        font-size: 17px;
+    }
+
+    #weatherContent p:nth-child(2) {
+        color: #218b4b;
+        font-size: 17px;
+        font-weight: 700;
+    }
+
+    #weatherContent ul {
+        margin: 8px 0;
+        padding-left: 24px;
+        color: #b33434;
+        font-weight: 700;
+    }
+
+    #weatherContent p:nth-last-child(-n + 2) {
+        color: #64748b;
+        font-size: 14px;
+    }
+
+    @media (max-width: 600px) {
+        body:has(.home-page) > h1 {
+            left: 18px;
+            font-size: 21px;
+        }
+
+        .home-menu-button {
+            right: 12px;
+        }
+
+        body:has(.home-page) > main {
+            padding: 20px 14px 36px;
+        }
+
+        .home-page {
+            gap: 20px;
+        }
+
+        .home-panel {
+            padding: 18px;
+            border-radius: 12px;
+        }
+
+        .home-panel h2 {
+            font-size: 19px;
+        }
+
+        #shelterMap {
+            height: 320px;
+        }
+
+        .weather-heading {
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .weather-heading h2 {
+            margin-bottom: 4px;
+        }
+
+        .weather-refresh-label {
+            padding-bottom: 14px;
+            font-size: 14px;
+        }
+    }
+</style>
+
+<button class="home-menu-button" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="home-menu" title="メニュー">
+    <i class="fa-solid fa-bars" aria-hidden="true"></i>
+</button>
+<nav class="home-menu-panel" id="home-menu" aria-label="メインメニュー" hidden>
+    <a href="/">ホーム</a>
+    <a href="/shelter_search">避難所検索</a>
+    <a href="/shelter_register">避難所登録</a>
+    <a href="/board">指示・発信ボード</a>
+    {% if session.logged_in %}
+        <a href="/logout">ログアウト</a>
+    {% else %}
+        <a href="/login">ログイン</a>
+    {% endif %}
+</nav>
+
+<div class="home-page">
+    <section class="home-panel" aria-labelledby="shelter-map-title">
+        <h2 id="shelter-map-title"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> 避難所マップ</h2>
+        <div id="shelterMap"></div>
+    </section>
+
+    <section class="home-panel" aria-labelledby="weather-title">
+        <div class="weather-heading">
+            <h2 id="weather-title"><i class="fa-solid fa-cloud-sun" aria-hidden="true"></i> 青森市 気象警報・注意報</h2>
+            <span class="weather-refresh-label"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> 10分おき自動更新</span>
+        </div>
+        <div id="weatherContent">
+            <p>読み込み中...</p>
+        </div>
+    </section>
 </div>
 
 <!-- Leaflet の読み込み -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const menuButton = document.querySelector('.home-menu-button');
+    const menu = document.getElementById('home-menu');
+
+    menuButton.addEventListener('click', function() {
+        const isExpanded = menuButton.getAttribute('aria-expanded') === 'true';
+        menuButton.setAttribute('aria-expanded', String(!isExpanded));
+        menuButton.setAttribute('aria-label', isExpanded ? 'メニューを開く' : 'メニューを閉じる');
+        menu.hidden = isExpanded;
+    });
+
+    document.addEventListener('click', function(event) {
+        if (!menu.hidden && !menu.contains(event.target) && !menuButton.contains(event.target)) {
+            menu.hidden = true;
+            menuButton.setAttribute('aria-expanded', 'false');
+            menuButton.setAttribute('aria-label', 'メニューを開く');
+        }
+    });
+
     // 地図の初期化（藤沢市周辺を中心に設定）
     const map = L.map('shelterMap').setView([35.3390, 139.4903], 12);
 
